@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0F2647">
+<title>Бюджет</title>
+<style>
+  :root{
+    --navy-deep:#0B1D33;
+    --navy:#13294B;
+    --navy-card:#16315A;
+    --line:#274571;
+    --gold:#D4AF6A;
+    --mint:#5FC9B6;
+    --coral:#E08D6E;
+    --sage:#8FAE9B;
+    --text:#EDEFF3;
+    --text-dim:#9AAAC4;
+    --danger:#E05C5C;
+    --good:#5FC97A;
+    --radius:16px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0; background:var(--navy-deep); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Arial,sans-serif;
+    overscroll-behavior-y:none; height:100%;}
+  body{display:flex; flex-direction:column; height:100vh;}
+  .topbar{
+    padding-top:calc(env(safe-area-inset-top,0px) + 16px);
+    padding:calc(env(safe-area-inset-top,0px) + 16px) 18px 14px 18px;
+    background:linear-gradient(180deg, var(--navy) 0%, var(--navy-deep) 100%);
+    border-bottom:1px solid var(--line);
+    position:sticky; top:0; z-index:5;
+  }
+  .topbar h1{margin:0; font-size:20px; font-weight:700; letter-spacing:.2px;}
+  .topbar .sub{font-size:12.5px; color:var(--text-dim); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  main{flex:1; overflow-y:auto; padding:14px 14px calc(86px + env(safe-area-inset-bottom,0px)) 14px;}
+  .card{
+    background:var(--navy-card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:16px;
+    margin-bottom:12px;
+  }
+  .card h2{margin:0 0 10px 0; font-size:14.5px; font-weight:700; color:var(--gold); letter-spacing:.3px;
+    text-transform:uppercase;}
+  .row{display:flex; justify-content:space-between; align-items:center; padding:8px 0;
+    border-bottom:1px solid rgba(255,255,255,0.05); gap:10px;}
+  .row:last-child{border-bottom:none;}
+  .row .label{font-size:14px; color:var(--text-dim); min-width:0; overflow:hidden;}
+  .row .value{font-size:15.5px; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap;}
+  .value.neg{color:var(--danger);}
+  .value.pos{color:var(--good);}
+  .big-stat{display:flex; flex-direction:column; gap:2px; margin-bottom:6px;}
+  .big-stat .num{font-size:30px; font-weight:800; font-variant-numeric:tabular-nums; letter-spacing:-.5px;}
+  .big-stat .cap{font-size:12px; color:var(--text-dim);}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .mini{background:var(--navy); border:1px solid var(--line); border-radius:12px; padding:12px; min-width:0;}
+  .mini .num{font-size:18px; font-weight:800; font-variant-numeric:tabular-nums;}
+  .mini .cap{font-size:11.5px; color:var(--text-dim); margin-top:2px;}
+  input[type=text], input[type=number]{
+    background:var(--navy); border:1px solid var(--line); color:var(--text);
+    border-radius:10px; padding:10px 12px; font-size:15px; width:100%;
+    font-family:inherit;
+  }
+  input:focus{outline:2px solid var(--gold); outline-offset:1px;}
+  input[disabled]{opacity:.55;}
+  .pct-input{width:74px !important; text-align:right; flex:0 0 74px !important;}
+  label.field{display:block; font-size:12px; color:var(--text-dim); margin-bottom:4px;}
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:6px;
+    background:var(--gold); color:#1A1404; font-weight:700; font-size:14.5px;
+    border:none; border-radius:12px; padding:12px 16px; width:100%;
+    cursor:pointer; -webkit-appearance:none;
+  }
+  .btn.secondary{background:transparent; color:var(--gold); border:1px solid var(--gold);}
+
+  .cat-row{display:flex; flex-direction:column; gap:7px; padding:12px 0; border-bottom:1px solid rgba(255,255,255,0.05);}
+  .cat-row:last-child{border-bottom:none;}
+  .cat-row .title-row{width:100%; min-width:0;}
+  .cat-row .meta-row{display:flex; justify-content:space-between; align-items:center; gap:10px;}
+  .cat-row .meta-left{flex:1; min-width:0; display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+  .cat-row .meta-right{display:flex; align-items:center; gap:10px; flex:0 0 auto;}
+  .cat-row .comment{font-size:11px; color:var(--text-dim); line-height:1.35;}
+  .cat-row .amount{font-size:13px; color:var(--mint); font-weight:700; min-width:74px; text-align:right; flex:0 0 auto;}
+
+  /* --- бегущая строка для длинных названий --- */
+  .marquee{ overflow:hidden; white-space:nowrap; position:relative; width:100%; }
+  .marquee-track{ display:inline-flex; will-change:transform; }
+  .marquee-track span{ display:inline-block; white-space:nowrap; padding-right:28px; font-size:14.5px; font-weight:600;}
+  .marquee.static .marquee-track{ transform:none !important; animation:none !important; }
+  .marquee.static .marquee-track span:nth-child(2){ display:none; }
+  @keyframes marquee-scroll{ from{transform:translateX(0);} to{transform:translateX(-50%);} }
+  .marquee.scrolling .marquee-track{ animation:marquee-scroll linear infinite; }
+
+  .tag{display:inline-block; font-size:10px; padding:2px 7px; border-radius:20px; margin-top:4px;}
+  .tag.safe{background:rgba(95,201,182,.15); color:var(--mint);}
+  .tag.metal{background:rgba(212,175,106,.15); color:var(--gold);}
+  .tag.aggr{background:rgba(224,141,110,.15); color:var(--coral);}
+  .warn{font-size:12.5px; color:var(--danger); margin-top:8px;}
+  .ok{font-size:12.5px; color:var(--good); margin-top:8px;}
+  .income-item{display:flex; justify-content:space-between; align-items:center; padding:9px 0;
+    border-bottom:1px solid rgba(255,255,255,0.05);}
+  .income-item:last-child{border-bottom:none;}
+  .income-item .month{font-size:14px;}
+  .income-item .amt{font-weight:700; font-variant-numeric:tabular-nums;}
+  .income-item .del{color:var(--text-dim); font-size:18px; padding:2px 8px; cursor:pointer;}
+  .add-income{display:flex; gap:8px; margin-top:10px;}
+  .add-income input{flex:1;}
+  .flow{display:flex; align-items:center; gap:8px; margin:6px 0; font-size:13px; color:var(--text-dim);}
+  .flow .arrow{color:var(--gold); font-size:16px;}
+  nav.tabbar{
+    position:fixed; left:0; right:0; bottom:0;
+    background:var(--navy); border-top:1px solid var(--line);
+    display:flex; padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px)) 4px;
+    z-index:10;
+  }
+  nav.tabbar button{
+    flex:1; background:none; border:none; color:var(--text-dim);
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+    font-size:11px; padding:6px 0; font-family:inherit;
+  }
+  nav.tabbar button .ic{font-size:19px; line-height:1;}
+  nav.tabbar button.active{color:var(--gold);}
+  .view{display:none;}
+  .view.active{display:block;}
+  .empty{text-align:center; padding:30px 10px; color:var(--text-dim); font-size:13.5px;}
+  .section-note{font-size:12px; color:var(--text-dim); margin:-4px 0 12px 0; line-height:1.5;}
+  .check-banner{display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:10px; font-size:13px; margin-top:6px;}
+  .check-banner.good{background:rgba(95,201,122,.12); color:var(--good);}
+  .check-banner.bad{background:rgba(224,92,92,.12); color:var(--danger);}
+  .lock-note{font-size:11px; color:var(--text-dim); margin-top:2px;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1 id="topTitle">Бюджет</h1>
+  <div class="sub" id="topSub">—</div>
+</div>
+
+<main id="main"></main>
+
+<nav class="tabbar">
+  <button data-view="incomes" class="active"><span class="ic">💰</span>Доходы</button>
+  <button data-view="budget"><span class="ic">🧾</span>Траты</button>
+  <button data-view="accounts"><span class="ic">🏦</span>Счета</button>
+  <button data-view="savings"><span class="ic">📈</span>Накопл.</button>
+</nav>
+
+<script>
+const STORAGE_KEY = "budget_app_v2";
+
+function defaultState(){
+  return {
+    buffer: 55000,
+    charityPct: 0.01,
+    incomes: [
+      {month:"Март 26", amount:96929.01},
+      {month:"Апрель 26", amount:133730.2},
+      {month:"Май 26", amount:99342},
+      {month:"Июнь 26", amount:106942.28},
+    ],
+    // категории буфера — % редактируется напрямую везде, включая спортзал
+    categories: [
+      {name:"Обязательные платежи (жильё, связь, кредиты)", pct:0.09, comment:"ЖКХ, интернет, минимальные платежи по кредитам"},
+      {name:"Питание", pct:0.27, comment:"Продукты + питание вне дома"},
+      {name:"Транспорт", pct:0.16, comment:"Бензин, общественный транспорт, такси"},
+      {name:"Личные расходы и развлечения", pct:0.25, comment:"Одежда, хобби, развлечения, подарки"},
+      {name:"Резервный фонд (подушка безопасности + непредвиденные расходы)", pct:0.12, comment:"Откладываем всегда — это и подушка, и форс-мажор. Сюда же страховка ТС и налоги."},
+      {name:"Спортзал / бассейн / сауна", pct:0.106, comment:"Абонементы — % задаётся вручную, годовая сумма считается от него ниже"},
+    ],
+    savings: [
+      {group:"safe", name:"Вклады / накопительный счёт (₽)", pct:0.35},
+      {group:"safe", name:"Облигации / денежный рынок (₽)", pct:0.15},
+      {group:"safe", name:"Юаневые вклады / облигации (CNY)", pct:0.05},
+      {group:"metal", name:"Драгоценные металлы (золото, серебро)", pct:0.15},
+      {group:"aggr", name:"Свой бизнес / дело", pct:0.15},
+      {group:"aggr", name:"Активы: акции / ETF / крипто", pct:0.15},
+    ],
+    rateRub: 0.16,
+    rateCny: 0.03,
+  };
+}
+
+let state = load();
+function load(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return defaultState();
+    const parsed = JSON.parse(raw);
+    return Object.assign(defaultState(), parsed);
+  }catch(e){ return defaultState(); }
+}
+function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); render(); }
+
+function n2(v){ return (isFinite(v) && v!==null) ? v : 0; }
+function fmt(n){
+  n = n2(n);
+  return n.toLocaleString('ru-RU', {minimumFractionDigits:2, maximumFractionDigits:2}) + " ₽";
+}
+function pctFmt(p){ return Math.round(n2(p)*1000)/10 + "%"; }
+
+// ---------- вычисления (повторяют логику таблицы) ----------
+function calc(){
+  const incomes = state.incomes;
+  const n = incomes.length;
+  const lastB = n ? incomes[n-1].amount : 0;
+  const avg = n ? incomes.reduce((s,i)=>s+i.amount,0)/n : 0;
+  const last4 = incomes.slice(-4);
+  const avg4 = last4.length ? last4.reduce((s,i)=>s+i.amount,0)/last4.length : 0;
+  const totalIncome = incomes.reduce((s,i)=>s+i.amount,0);
+  const buffer = state.buffer || 0;
+
+  const cushionCat = state.categories.find(c=>c.name.startsWith("Резервный"));
+  const cushionPct = cushionCat ? cushionCat.pct : 0;
+  const cushionAmt = cushionPct * buffer;
+
+  const gymCat = state.categories.find(c=>c.name.startsWith("Спортзал"));
+  const gPct = gymCat ? gymCat.pct : 0;
+  const gymAmt = gPct * buffer;
+  const gymAnnual = gymAmt * 12;
+
+  const totalPct = state.categories.reduce((s,c)=>s+c.pct,0);
+
+  const charityPct = state.charityPct || 0;
+  const charityMonth = lastB * charityPct;
+  const charityTotal = totalIncome * charityPct;
+
+  const spentTotal = n * (buffer - cushionAmt);
+
+  const nakopMonth = Math.max(0, lastB - buffer - charityMonth);
+  const nakopTotal = totalIncome - n*buffer - charityTotal;
+
+  const tratyMonth = buffer - cushionAmt;
+
+  const shortfall = (lastB - buffer - charityMonth) < 0;
+
+  return {n, lastB, avg, avg4, totalIncome, buffer, cushionAmt, cushionPct, gPct, gymAmt, gymAnnual, totalPct,
+          spentTotal, nakopMonth, nakopTotal, tratyMonth, charityMonth, charityTotal, charityPct, shortfall};
+}
+
+function calcSavings(c){
+  const totalPct = state.savings.reduce((s,x)=>s+x.pct,0);
+  const groupSum = g => state.savings.filter(x=>x.group===g).reduce((s,x)=>s+x.pct,0) * c.nakopTotal;
+  const safeSum = groupSum("safe");
+  const metalSum = groupSum("metal");
+  const aggrSum = groupSum("aggr");
+  const rubItems = state.savings.filter(x=>x.group==="safe" && !/CNY|Юан/i.test(x.name));
+  const cnyItems = state.savings.filter(x=>x.group==="safe" && /CNY|Юан/i.test(x.name));
+  const rubAmt = rubItems.reduce((s,x)=>s+x.pct,0) * c.nakopTotal;
+  const cnyAmt = cnyItems.reduce((s,x)=>s+x.pct,0) * c.nakopTotal;
+  const income = rubAmt*state.rateRub + cnyAmt*state.rateCny;
+  const coverage = aggrSum ? income/aggrSum : 0;
+  return {totalPct, safeSum, metalSum, aggrSum, income, coverage};
+}
+
+// ---------- бегущая строка ----------
+function setupMarquees(root){
+  root.querySelectorAll(".marquee").forEach(el=>{
+    const track = el.querySelector(".marquee-track");
+    const first = track.querySelector("span");
+    el.classList.remove("scrolling"); el.classList.add("static");
+    track.style.animationDuration = "";
+    // двойной rAF, чтобы layout успел посчитаться
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      const overflow = first.scrollWidth > el.clientWidth + 1;
+      if(overflow){
+        el.classList.remove("static"); el.classList.add("scrolling");
+        const dist = first.scrollWidth + 28;
+        const duration = Math.max(6, dist/40); // ~40px/сек
+        track.style.animationDuration = duration + "s";
+      }
+    }));
+  });
+}
+function marqueeHTML(text){
+  return `<div class="marquee static"><div class="marquee-track"><span>${text}</span><span aria-hidden="true">${text}</span></div></div>`;
+}
+
+// ---------- рендер ----------
+let activeView = "incomes";
+
+function render(){
+  const c = calc();
+  document.getElementById("topSub").textContent =
+    `ЗП: ${fmt(c.lastB)} последняя · Накоплено всего: ${fmt(c.nakopTotal)}`;
+
+  document.querySelectorAll('main .view').forEach(v=>v.remove());
+  const main = document.getElementById("main");
+  const view = document.createElement("div");
+  view.className = "view active";
+  view.id = "view-"+activeView;
+
+  if(activeView==="incomes") view.innerHTML = renderIncomes(c);
+  if(activeView==="budget") view.innerHTML = renderBudget(c);
+  if(activeView==="accounts") view.innerHTML = renderAccounts(c);
+  if(activeView==="savings") view.innerHTML = renderSavings(c);
+
+  main.appendChild(view);
+  bindEvents();
+  setupMarquees(view);
+}
+
+function renderIncomes(c){
+  const items = state.incomes.map((inc, idx)=>`
+    <div class="income-item">
+      <div class="month">${inc.month}</div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div class="amt">${fmt(inc.amount)}</div>
+        <div class="del" data-del-income="${idx}">✕</div>
+      </div>
+    </div>
+  `).join("") || `<div class="empty">Пока нет записей о зарплате</div>`;
+
+  return `
+    <div class="card">
+      <h2>Сводка</h2>
+      <div class="grid2">
+        <div class="mini"><div class="num">${fmt(c.avg)}</div><div class="cap">Средняя за всё время</div></div>
+        <div class="mini"><div class="num">${fmt(c.avg4)}</div><div class="cap">Средняя за 4 мес</div></div>
+        <div class="mini"><div class="num">${fmt(c.totalIncome)}</div><div class="cap">Сумма ЗП за всё время</div></div>
+        <div class="mini"><div class="num">${c.n}</div><div class="cap">Месяцев с ЗП</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Зарплата по месяцам</h2>
+      ${items}
+      <div class="add-income">
+        <input type="text" id="newMonth" placeholder="Месяц (напр. Июль 26)">
+        <input type="number" id="newAmount" placeholder="Сумма" inputmode="decimal">
+      </div>
+      <div style="height:10px;"></div>
+      <button class="btn" id="addIncomeBtn">+ Добавить месяц</button>
+    </div>
+  `;
+}
+
+function renderBudget(c){
+  const pctClass = Math.abs(c.totalPct-1) < 0.0005 ? "good" : "bad";
+
+  const catRows = state.categories.map((cat, idx)=>{
+    const amt = cat.pct * state.buffer;
+    return `
+    <div class="cat-row">
+      <div class="title-row">${marqueeHTML(cat.name)}</div>
+      <div class="meta-row">
+        <div class="meta-left"><div class="comment">${cat.comment||""}</div></div>
+        <div class="meta-right">
+          <input type="number" class="pct-input" data-cat-pct="${idx}" value="${(cat.pct*100).toFixed(1)}" step="0.1">
+          <div class="amount">${fmt(amt)}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+
+  return `
+    <div class="card">
+      <h2>Буфер — бюджет на жизнь</h2>
+      <label class="field">Сумма в месяц</label>
+      <input type="number" id="bufferInput" value="${state.buffer}" inputmode="decimal">
+    </div>
+    <div class="card">
+      <h2>Категории (% от буфера)</h2>
+      <div class="section-note">% можно с одним знаком после запятой (например 10.6). Сумма всех категорий (включая спортзал) должна давать 100%.</div>
+      ${catRows}
+      <div class="check-banner ${pctClass}">${pctClass==='good' ? '✓ ИТОГО = 100%' : '⚠ ИТОГО = '+pctFmt(c.totalPct)+', должно быть 100% — подвинь проценты выше'}</div>
+    </div>
+    <div class="card">
+      <h2>Спортзал / бассейн / сауна</h2>
+      <div class="section-note">Вот сколько выделяется на абонементы в год при текущем % и буфере — меняется не здесь, а процентом в категории выше.</div>
+      <div class="row"><div class="label">Выделено на год</div><div class="value pos">${fmt(c.gymAnnual)}</div></div>
+      <div class="row"><div class="label">Выделено в месяц</div><div class="value">${fmt(c.gymAmt)}</div></div>
+    </div>
+    <div class="card">
+      <h2>Благотворительность</h2>
+      <div class="section-note">Считается от полной ЗП, а не от буфера — отдельная доля прямо от заработка.</div>
+      <label class="field">% от ЗП в месяц</label>
+      <input type="number" id="charityInput" value="${Math.round(c.charityPct*1000)/10}" step="0.5">
+      <div class="row" style="margin-top:8px;"><div class="label">За последний месяц</div><div class="value">${fmt(c.charityMonth)}</div></div>
+      <div class="row"><div class="label">За всё время</div><div class="value">${fmt(c.charityTotal)}</div></div>
+    </div>
+    <div class="card">
+      <h2>Статистика</h2>
+      <div class="row"><div class="label">Потрачено всего (без подушки)</div><div class="value">${fmt(c.spentTotal)}</div></div>
+      <div class="row"><div class="label">Накопления за последний месяц</div><div class="value ${c.nakopMonth<=0 && c.shortfall ?'neg':'pos'}">${fmt(c.nakopMonth)}</div></div>
+      <div class="row"><div class="label">Накопления за всё время</div><div class="value pos">${fmt(c.nakopTotal)}</div></div>
+      ${c.shortfall ? `<div class="warn">⚠ Последней ЗП не хватает на буфер + благотворительность — проверь расходы в этом месяце.</div>` : ``}
+    </div>
+  `;
+}
+
+function renderAccounts(c){
+  return `
+    <div class="card">
+      <div class="big-stat">
+        <div class="num">${fmt(c.lastB)}</div>
+        <div class="cap">ЗП — последнее поступление</div>
+      </div>
+      <div class="flow"><span class="arrow">↓</span> делится на буфер, благотворительность и накопления</div>
+    </div>
+    <div class="grid2">
+      <div class="mini"><div class="num">${fmt(c.buffer)}</div><div class="cap">Буфер (на жизнь)</div></div>
+      <div class="mini"><div class="num">${fmt(c.nakopMonth)}</div><div class="cap">Накопления (остаток)</div></div>
+    </div>
+    <div class="card" style="margin-top:12px;">
+      <h2>Сколько положить в этом месяце</h2>
+      <div class="row"><div class="label">Счёт «Траты»</div><div class="value">${fmt(c.tratyMonth)}</div></div>
+      <div class="row"><div class="label">Подушка безопасности</div><div class="value">${fmt(c.cushionAmt)}</div></div>
+      <div class="row"><div class="label">Благотворительность</div><div class="value">${fmt(c.charityMonth)}</div></div>
+      <div class="row"><div class="label">Накопления</div><div class="value">${fmt(c.nakopMonth)}</div></div>
+      <div class="row"><div class="label"><b>ИТОГО (= вся ЗП)</b></div><div class="value">${fmt(c.tratyMonth+c.cushionAmt+c.charityMonth+c.nakopMonth)}</div></div>
+    </div>
+  `;
+}
+
+function renderSavings(c){
+  const s = calcSavings(c);
+  const pctClass = Math.abs(s.totalPct-1) < 0.0005 ? "good" : "bad";
+  const tagFor = g => g==="safe" ? '<span class="tag safe">надёжные</span>' : g==="metal" ? '<span class="tag metal">металлы</span>' : '<span class="tag aggr">агрессивные</span>';
+  const rows = state.savings.map((sv, idx)=>{
+    const amt = sv.pct * c.nakopTotal;
+    return `
+    <div class="cat-row">
+      <div class="title-row">${marqueeHTML(sv.name)}</div>
+      <div class="meta-row">
+        <div class="meta-left">${tagFor(sv.group)}</div>
+        <div class="meta-right">
+          <input type="number" class="pct-input" data-sv-pct="${idx}" value="${(sv.pct*100).toFixed(1)}" step="0.1">
+          <div class="amount">${fmt(amt)}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+
+  const monthRows = state.savings.map((sv)=>{
+    const amtMonth = sv.pct * c.nakopMonth;
+    return `<div class="row"><div class="label">${sv.name}</div><div class="value">${fmt(amtMonth)}</div></div>`;
+  }).join("");
+
+  const covPct = Math.round(s.coverage*1000)/10;
+  const covClass = s.coverage >= 1 ? "good" : "bad";
+
+  return `
+    <div class="card">
+      <h2>Накопления — всего</h2>
+      <div class="big-stat"><div class="num">${fmt(c.nakopTotal)}</div><div class="cap">с учётом буфера и благотворительности, без подушки</div></div>
+      ${rows}
+      <div class="check-banner ${pctClass}">${pctClass==='good' ? '✓ ИТОГО = 100%' : '⚠ ИТОГО = '+pctFmt(s.totalPct)+', должно быть 100%'}</div>
+    </div>
+    <div class="card">
+      <h2>Сводка по группам</h2>
+      <div class="row"><div class="label">Надёжные (процентные)</div><div class="value">${fmt(s.safeSum)}</div></div>
+      <div class="row"><div class="label">Защитный резерв (металлы)</div><div class="value">${fmt(s.metalSum)}</div></div>
+      <div class="row"><div class="label">Агрессивные</div><div class="value">${fmt(s.aggrSum)}</div></div>
+    </div>
+    <div class="card">
+      <h2>Ставки и проверка просадки</h2>
+      <label class="field">Ставка по ₽ вкладам/облигациям</label>
+      <input type="number" id="rateRubInput" value="${Math.round(state.rateRub*1000)/10}" step="0.5">
+      <div style="height:10px;"></div>
+      <label class="field">Ставка по юаневым инструментам</label>
+      <input type="number" id="rateCnyInput" value="${Math.round(state.rateCny*1000)/10}" step="0.5">
+      <div class="row" style="margin-top:8px;"><div class="label">Ожидаемый годовой доход</div><div class="value pos">${fmt(s.income)}</div></div>
+      <div class="check-banner ${covClass}">${covClass==='good' ? '✓' : '⚠'} Покрывает ${covPct}% возможной просадки агрессивной части</div>
+    </div>
+    <div class="card">
+      <h2>Движение за этот месяц</h2>
+      <div class="section-note">Распределение накоплений последнего месяца (${fmt(c.nakopMonth)}) по тем же %.</div>
+      ${monthRows}
+    </div>
+  `;
+}
+
+function bindEvents(){
+  document.getElementById("addIncomeBtn")?.addEventListener("click", ()=>{
+    const m = document.getElementById("newMonth").value.trim();
+    const a = parseFloat(document.getElementById("newAmount").value);
+    if(!m || isNaN(a)) return;
+    state.incomes.push({month:m, amount:a});
+    save();
+  });
+  document.querySelectorAll("[data-del-income]").forEach(el=>{
+    el.addEventListener("click", ()=>{
+      state.incomes.splice(parseInt(el.dataset.delIncome),1);
+      save();
+    });
+  });
+  document.getElementById("bufferInput")?.addEventListener("change", e=>{
+    state.buffer = parseFloat(e.target.value)||0; save();
+  });
+  document.getElementById("charityInput")?.addEventListener("change", e=>{
+    state.charityPct = (parseFloat(e.target.value)||0)/100; save();
+  });
+  document.querySelectorAll("[data-cat-pct]").forEach(el=>{
+    el.addEventListener("change", e=>{
+      state.categories[el.dataset.catPct].pct = (parseFloat(e.target.value)||0)/100; save();
+    });
+  });
+  document.querySelectorAll("[data-sv-pct]").forEach(el=>{
+    el.addEventListener("change", e=>{
+      state.savings[el.dataset.svPct].pct = (parseFloat(e.target.value)||0)/100; save();
+    });
+  });
+  document.getElementById("rateRubInput")?.addEventListener("change", e=>{
+    state.rateRub = (parseFloat(e.target.value)||0)/100; save();
+  });
+  document.getElementById("rateCnyInput")?.addEventListener("change", e=>{
+    state.rateCny = (parseFloat(e.target.value)||0)/100; save();
+  });
+}
+
+document.querySelectorAll("nav.tabbar button").forEach(btn=>{
+  btn.addEventListener("click", ()=>{
+    document.querySelectorAll("nav.tabbar button").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    activeView = btn.dataset.view;
+    render();
+  });
+});
+
+window.addEventListener("resize", ()=>{
+  const view = document.querySelector("main .view.active");
+  if(view) setupMarquees(view);
+});
+
+render();
+</script>
+</body>
+</html>
