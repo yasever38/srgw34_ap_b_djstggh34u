@@ -114,6 +114,7 @@
   .income-item .del{color:var(--text-dim); font-size:18px; padding:2px 8px; cursor:pointer;}
   .add-income{display:flex; gap:8px; margin-top:10px;}
   .add-income input{flex:1;}
+  .add-income .btn{flex:1; width:auto;}
   .flow{display:flex; align-items:center; gap:8px; margin:6px 0; font-size:13px; color:var(--text-dim);}
   .flow .arrow{color:var(--gold); font-size:16px;}
   nav.tabbar{
@@ -137,6 +138,18 @@
   .check-banner.good{background:rgba(95,201,122,.12); color:var(--good);}
   .check-banner.bad{background:rgba(224,92,92,.12); color:var(--danger);}
   .lock-note{font-size:11px; color:var(--text-dim); margin-top:2px;}
+  .backup-banner{
+    display:flex; align-items:center; gap:8px;
+    background:rgba(212,175,106,.13); border-bottom:1px solid rgba(212,175,106,.35);
+    color:var(--gold); font-size:12px; padding:8px 14px;
+    position:sticky; top:0; z-index:6;
+  }
+  .backup-banner span.txt{flex:1; line-height:1.35;}
+  .backup-banner button{
+    background:none; border:none; color:var(--gold); font-size:16px; line-height:1;
+    padding:2px 4px; cursor:pointer; flex:0 0 auto;
+  }
+  .backup-banner.hidden{display:none;}
 </style>
 </head>
 <body>
@@ -144,6 +157,11 @@
 <div class="topbar">
   <h1 id="topTitle">Бюджет</h1>
   <div class="sub" id="topSub">—</div>
+</div>
+
+<div class="backup-banner" id="backupBanner">
+  <span class="txt">⚠ Если меняла(-л) данные — не забудь иногда экспортировать JSON-копию (вкладка «Доходы» → «Резервная копия»), чтобы не потерять их.</span>
+  <button id="bannerClose" aria-label="Закрыть">✕</button>
 </div>
 
 <main id="main"></main>
@@ -156,18 +174,13 @@
 </nav>
 
 <script>
-const STORAGE_KEY = "budget_app_v2";
+const STORAGE_KEY = "budget_app_v3";
 
 function defaultState(){
   return {
     buffer: 55000,
     charityPct: 0.01,
-    incomes: [
-      {month:"Март 26", amount:96929.01},
-      {month:"Апрель 26", amount:133730.2},
-      {month:"Май 26", amount:99342},
-      {month:"Июнь 26", amount:106942.28},
-    ],
+    incomes: [],
     // категории буфера — % редактируется напрямую везде, включая спортзал
     categories: [
       {name:"Обязательные платежи (жильё, связь, кредиты)", pct:0.09, comment:"ЖКХ, интернет, минимальные платежи по кредитам"},
@@ -340,6 +353,16 @@ function renderIncomes(c){
       <div style="height:10px;"></div>
       <button class="btn" id="addIncomeBtn">+ Добавить месяц</button>
     </div>
+    <div class="card">
+      <h2>Резервная копия</h2>
+      <div class="section-note">Все данные хранятся только в этом браузере на этом телефоне. Экспортируй JSON-файл после важных изменений и сохрани его в облако (Google Диск/Telegram) — на случай переустановки или очистки кэша.</div>
+      <div class="add-income">
+        <button class="btn" id="exportBtn">⬇ Экспорт JSON</button>
+        <button class="btn secondary" id="importBtn">⬆ Импорт JSON</button>
+      </div>
+      <input type="file" id="importFile" accept="application/json,.json" style="display:none;">
+      <div id="importStatus" class="lock-note" style="margin-top:8px;"></div>
+    </div>
   `;
 }
 
@@ -493,6 +516,43 @@ function bindEvents(){
       save();
     });
   });
+  document.getElementById("exportBtn")?.addEventListener("click", ()=>{
+    const dataStr = JSON.stringify(state, null, 2);
+    const blob = new Blob([dataStr], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const today = new Date().toISOString().slice(0,10);
+    a.href = url;
+    a.download = `budget-backup-${today}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+  document.getElementById("importBtn")?.addEventListener("click", ()=>{
+    document.getElementById("importFile").click();
+  });
+  document.getElementById("importFile")?.addEventListener("change", (e)=>{
+    const file = e.target.files[0];
+    const statusEl = document.getElementById("importStatus");
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try{
+        const parsed = JSON.parse(reader.result);
+        if(!parsed || !Array.isArray(parsed.incomes) || !Array.isArray(parsed.categories)){
+          throw new Error("Похоже, это не файл резервной копии этого приложения.");
+        }
+        state = Object.assign(defaultState(), parsed);
+        save();
+        if(statusEl) statusEl.textContent = "✓ Данные восстановлены из файла.";
+      }catch(err){
+        if(statusEl){ statusEl.textContent = "⚠ Не удалось импортировать: " + err.message; }
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  });
   document.getElementById("bufferInput")?.addEventListener("change", e=>{
     state.buffer = parseFloat(e.target.value)||0; save();
   });
@@ -530,6 +590,20 @@ window.addEventListener("resize", ()=>{
   const view = document.querySelector("main .view.active");
   if(view) setupMarquees(view);
 });
+
+// ---------- баннер напоминания про бэкап ----------
+const BANNER_KEY = "budget_app_banner_dismissed_until";
+(function initBanner(){
+  const banner = document.getElementById("backupBanner");
+  const until = parseInt(localStorage.getItem(BANNER_KEY) || "0", 10);
+  if(Date.now() < until){ banner.classList.add("hidden"); }
+  document.getElementById("bannerClose").addEventListener("click", ()=>{
+    // прячем на 7 дней, потом напомнит снова
+    const next = Date.now() + 7*24*60*60*1000;
+    localStorage.setItem(BANNER_KEY, String(next));
+    banner.classList.add("hidden");
+  });
+})();
 
 render();
 </script>
