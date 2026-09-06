@@ -6,12 +6,16 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Бюджет">
 <meta name="theme-color" content="#0F2647">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="manifest" href="manifest.json">
 <title>Бюджет</title>
+<!-- График — Chart.js через CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
+  /* ==== ТОЧНОЕ ОФОРМЛЕНИЕ ТЕКУЩЕЙ ВЕРСИИ (без изменений) ==== */
   :root{
     --navy-deep:#0B1D33;
     --navy:#13294B;
@@ -65,7 +69,7 @@
   .mini{background:var(--navy); border:1px solid var(--line); border-radius:12px; padding:12px; min-width:0;}
   .mini .num{font-size:18px; font-weight:800; font-variant-numeric:tabular-nums;}
   .mini .cap{font-size:11.5px; color:var(--text-dim); margin-top:2px;}
-  input[type=text], input[type=number]{
+  input[type=text], input[type=number], input[type=date]{
     background:var(--navy); border:1px solid var(--line); color:var(--text);
     border-radius:10px; padding:10px 12px; font-size:15px; width:100%;
     font-family:inherit;
@@ -81,6 +85,7 @@
     cursor:pointer; -webkit-appearance:none;
   }
   .btn.secondary{background:transparent; color:var(--gold); border:1px solid var(--gold);}
+  .btn.danger{background:transparent; color:var(--danger); border:1px solid var(--danger);}
 
   .cat-row{display:flex; flex-direction:column; gap:7px; padding:12px 0; border-bottom:1px solid rgba(255,255,255,0.05);}
   .cat-row:last-child{border-bottom:none;}
@@ -104,6 +109,7 @@
   .tag.safe{background:rgba(95,201,182,.15); color:var(--mint);}
   .tag.metal{background:rgba(212,175,106,.15); color:var(--gold);}
   .tag.aggr{background:rgba(224,141,110,.15); color:var(--coral);}
+  .tag.gray{background:rgba(154,170,196,.15); color:var(--text-dim);}
   .warn{font-size:12.5px; color:var(--danger); margin-top:8px;}
   .ok{font-size:12.5px; color:var(--good); margin-top:8px;}
   .income-item{display:flex; justify-content:space-between; align-items:center; padding:9px 0;
@@ -138,18 +144,183 @@
   .check-banner.good{background:rgba(95,201,122,.12); color:var(--good);}
   .check-banner.bad{background:rgba(224,92,92,.12); color:var(--danger);}
   .lock-note{font-size:11px; color:var(--text-dim); margin-top:2px;}
-  .backup-banner{
-    display:flex; align-items:center; gap:8px;
-    background:rgba(212,175,106,.13); border-bottom:1px solid rgba(212,175,106,.35);
-    color:var(--gold); font-size:12px; padding:8px 14px;
-    position:sticky; top:0; z-index:6;
-  }
-  .backup-banner span.txt{flex:1; line-height:1.35;}
-  .backup-banner button{
-    background:none; border:none; color:var(--gold); font-size:16px; line-height:1;
-    padding:2px 4px; cursor:pointer; flex:0 0 auto;
-  }
-  .backup-banner.hidden{display:none;}
+
+  /* ==== ДОБАВЛЕНО ДЛЯ НОВЫХ ЭКРАНОВ ==== */
+
+  /* Кнопка «Добавить доход» — крупная */
+  .btn-big{font-size:17px; padding:16px; border-radius:14px;}
+  .btn-big .plus{font-size:22px; line-height:1;}
+
+  /* Контейнер графика */
+  .chart-wrap{position:relative; width:100%; max-width:360px; margin:8px auto 4px auto;}
+  .chart-center{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none; text-align:center; padding:0 20px;}
+  .chart-center .v{font-size:16px; font-weight:800; font-variant-numeric:tabular-nums;}
+  .chart-center .c{font-size:11px; color:var(--text-dim);}
+
+  /* Подписи-«стрелочки» к диаграмме (HTML-слой поверх канваса) */
+  .leader-overlay{position:absolute; inset:0; pointer-events:none; z-index:2;}
+  /* Плашка под текстом: тёмная полупрозрачная подложка, чтобы надпись читалась
+     даже если задевает саму диаграмму (даёт красивую "карточку"-подпись) */
+  .leader-overlay .lbl{position:absolute; transform:translateY(-50%); line-height:1.25;
+    background:rgba(16,29,54,.92); border:1px solid rgba(255,255,255,.10);
+    border-radius:9px; padding:4px 9px 5px;
+    box-shadow:0 2px 12px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.35);}
+  .leader-overlay .lbl.r{text-align:left;}
+  .leader-overlay .lbl.l{text-align:right; transform:translateX(-100%) translateY(-50%);}
+  .leader-overlay .lbl-name{display:block; font-size:11.5px; font-weight:600; color:#EDEFF3;
+    white-space:nowrap; overflow:hidden; position:relative;}
+  .leader-overlay .lbl-name .lbl-inner{display:inline-block; white-space:nowrap; will-change:transform;}
+  .leader-overlay .lbl-name.mq .lbl-inner{animation: lblrun 4s linear infinite alternate;}
+  .leader-overlay .lbl-val{font-size:11.5px; font-weight:700; color:var(--gold);
+    font-variant-numeric:tabular-nums; margin-top:1px;
+    text-shadow:0 1px 2px rgba(0,0,0,.6);}
+  @keyframes lblrun{from{transform:translateX(0);} to{transform:translateX(var(--s, -40px));}}
+
+  /* Легенда (список распределения) под диаграммой */
+  .legend{display:flex; flex-direction:column; gap:6px; margin-top:14px;}
+  .legend .lg{display:flex; align-items:center; gap:8px; font-size:12.5px;}
+  .legend .sw{width:12px; height:12px; border-radius:3px; flex:0 0 auto;}
+  .legend .lg .nm{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .legend .lg .vv{color:var(--text-dim); font-variant-numeric:tabular-nums;}
+
+  /* Иерархия распределения (дерево) */
+  .tree-line{display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid rgba(255,255,255,0.05);}
+  .tree-line:last-child{border-bottom:none;}
+  .tree-line .tname{flex:1; min-width:0; font-size:13.5px; display:flex; align-items:center; gap:6px;}
+  .tree-line .tname .cnt{color:var(--mint); font-size:11px; opacity:.9;}
+  .tree-line .tamount{font-size:14px; font-weight:700; white-space:nowrap; font-variant-numeric:tabular-nums;}
+  .tree-line .tamount .pct{font-size:11px; color:var(--text-dim); font-weight:600;}
+  .tree-line.container .tname{font-weight:800; color:var(--gold);}
+  .tree-line.container .tamount{color:var(--gold);}
+  /* Три строки-контейнера («Доход», «Остаток», «Свободный остаток»):
+     названия слева, суммы — по центру отведённой колонки */
+  .tree-line.tree-line-c .tname{flex:0 0 58%;}
+  .tree-line.tree-line-c .tamount{flex:1; text-align:center;}
+  .indent-0{padding-left:0;} .indent-1{padding-left:16px;} .indent-2{padding-left:32px;} .indent-3{padding-left:48px;}
+
+  /* Настройки: ползунки и ряды категорий */
+  .set-row{display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05); flex-wrap:wrap;}
+  .set-row:last-child{border-bottom:none;}
+  .set-row .s-name{flex:1; min-width:140px; font-size:13.5px;}
+  .set-row .s-name small{display:block; color:var(--text-dim); font-size:11px; font-weight:400;}
+  .seg{display:inline-flex; border:1px solid var(--line); border-radius:9px; overflow:hidden; flex:0 0 auto;}
+  .seg button{background:none; border:none; color:var(--text-dim); padding:7px 12px; font-size:12px; font-family:inherit; cursor:pointer;}
+  .seg button.active{background:var(--gold); color:#1A1404; font-weight:700;}
+
+  /* Добавить категорию */
+  .form-field{margin-bottom:10px;}
+  .form-grid{display:flex; gap:8px; flex-wrap:wrap;}
+  .form-grid > *{flex:1; min-width:120px;}
+
+  /* Информация */
+  .info-section-title{font-size:14px; font-weight:800; color:var(--gold); text-transform:none; letter-spacing:.2px;}
+  .kv{display:flex; gap:8px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05); font-size:13px; line-height:1.45;}
+  .kv:last-child{border-bottom:none;}
+  .kv .k{flex:0 0 118px; color:var(--gold); font-weight:700; font-size:12.5px;}
+  .kv .v{flex:1; color:var(--text); min-width:0;}
+  .kv.tight .k{flex-basis:92px;}
+  .nl{list-style:none; margin:0; padding:0;}
+  .nl li{display:flex; gap:8px; padding:7px 0; border-bottom:1px solid rgba(255,255,255,0.05); font-size:13px; line-height:1.45;}
+  .nl li:last-child{border-bottom:none;}
+  .nl .n{color:var(--gold); font-weight:700; flex:0 0 18px; text-align:right;}
+
+  /* Календарь действий */
+  .cal-group{padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.08);}
+  .cal-group:last-child{border-bottom:none;}
+  .cal-date{font-size:12px; color:var(--mint); font-weight:700; display:block; margin-bottom:3px;}
+  .cal-type{display:inline-block; font-size:10px; padding:2px 8px; border-radius:20px; margin-bottom:5px; font-weight:700;}
+  .cal-type.podg{background:rgba(154,170,196,.15); color:var(--text-dim);}
+  .cal-type.year{background:rgba(95,201,182,.15); color:var(--mint);}
+  .cal-type.key{background:rgba(224,92,92,.2); color:var(--danger);}
+  .cal-check{display:flex; align-items:flex-start; gap:10px; margin-top:6px;}
+  .cal-check input{width:auto; margin-top:2px; flex:0 0 auto;}
+  .cal-body{flex:1;}
+  .cal-body .w{font-size:13.5px; font-weight:600; margin-bottom:2px;}
+  .cal-body .d{font-size:12px; color:var(--text-dim); line-height:1.4;}
+  .cal-check.done .cal-body{opacity:.45;}
+  .cal-check.done .w{text-decoration:line-through;}
+
+  /* Долгосрок */
+  .year-head{display:flex; justify-content:space-between; align-items:center; width:100%; background:none; border:none;
+    color:var(--gold); font-family:inherit; font-size:14px; font-weight:800; padding:10px 0; cursor:pointer; letter-spacing:.3px;}
+  .year-head .sum{color:var(--text-dim); font-size:11.5px; font-weight:600;}
+  .lg-grid{display:grid; grid-template-columns:58px 1fr 1fr 1fr 1fr; gap:4px 8px; font-size:11.5px; padding:4px 0;}
+  .lg-grid .hd{color:var(--gold); font-weight:700; font-size:10.5px;}
+  .lg-grid .rv{font-variant-numeric:tabular-nums; color:var(--text-dim);}
+  .lg-grid .rv.p{color:var(--mint);}
+  .lg-grid .rv.i{color:var(--gold);}
+  .lg-grid .note{grid-column:1 / -1; color:var(--text-dim); font-size:10.5px; padding-top:2px;}
+
+  /* Подсказка установки PWA */
+  .a2hs{position:fixed; left:10px; right:10px; bottom:calc(72px + env(safe-area-inset-bottom,0px)); z-index:9;
+    background:var(--navy-card); border:1px solid var(--line); border-radius:14px; padding:12px 14px;
+    display:flex; align-items:center; gap:10px; box-shadow:0 6px 24px rgba(0,0,0,.4);}
+  .a2hs .txt{flex:1; font-size:12.5px; line-height:1.35;}
+  .a2hs button{background:none; border:none; color:var(--gold); font-weight:700; font-size:12px; font-family:inherit; cursor:pointer; padding:4px 6px;}
+  .a2hs button.x{color:var(--text-dim); font-size:16px;}
+  .a2hs.hidden{display:none;}
+
+  /* Баннер «есть долги» */
+  .debt-banner{background:rgba(224,92,92,.12); border:1px solid rgba(224,92,92,.4); color:var(--danger);
+    border-radius:var(--radius); padding:14px 16px; font-size:13px; line-height:1.45; margin-bottom:12px;}
+
+  /* ===== НОВОЕ: главная (1.1–1.4) ===== */
+
+  /* Селектор месяца/года на главной */
+  .period-row{display:flex; gap:8px; margin-top:4px;}
+  .period-select{flex:1; background:var(--navy); border:1px solid var(--line); color:var(--text);
+    border-radius:10px; padding:10px; font-size:14px; font-family:inherit;}
+
+  /* Три строки-контейнера («Доход», «Остаток», «Свободный остаток») с переключаемым типом */
+  .locked-row{background:var(--navy-card); border:1px solid var(--line); border-radius:12px; padding:8px 10px; margin:0 0 6px 0;}
+  .locked-row .k2{font-size:12px; color:var(--text-dim); font-weight:400;}
+  .locked-row .v2{font-size:15px; font-weight:800; color:var(--gold); font-variant-numeric:tabular-nums;}
+  .switch2{display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; flex:0 0 auto;}
+  .switch2 button{background:none; border:none; color:var(--text-dim); padding:6px 10px; font-size:11px; font-family:inherit; cursor:pointer;}
+  .switch2 button.active{background:var(--gold); color:#1A1404; font-weight:700;}
+
+  /* ===== НОВОЕ: настройки (3.1–3.4) ===== */
+
+  /* Статичное предупреждение о долгах (вместо чекбокса) */
+  .debt-notice{background:rgba(224,92,92,.12); border:1px solid rgba(224,92,92,.4); color:var(--danger);
+    border-radius:var(--radius); padding:12px 34px 12px 16px; font-size:13px; line-height:1.45; position:relative;}
+  .debt-close{position:absolute; top:8px; right:8px; width:24px; height:24px; border-radius:50%;
+    border:none; background:rgba(224,92,92,.18); color:var(--danger); font-size:13px; line-height:1;
+    cursor:pointer; display:flex; align-items:center; justify-content:center;}
+  .debt-close:hover{background:rgba(224,92,92,.35); color:#fff;}
+
+  /* Напоминание на главной: заходить минимум 1 раз 27 числа */
+  .reminder{background:rgba(212,175,106,.09); border:1px solid rgba(212,175,106,.35); color:var(--gold);
+    border-radius:var(--radius); padding:13px 16px; font-size:13px; line-height:1.5; margin-top:14px;}
+
+  /* Категории, сгруппированные по уровням — каждый уровень отдельным блоком */
+  .cat-level{margin:0 0 14px 0; background:rgba(255,255,255,0.03);
+    border:1px solid var(--line); border-radius:12px; padding:10px 12px;}
+  .cat-level-title{font-size:13px; font-weight:800; color:var(--gold); margin-bottom:2px;}
+  .cat-level-note{font-size:11.5px; color:var(--text-dim); margin-bottom:8px;}
+  .cat-level-base{font-size:12px; font-weight:700; color:var(--text); font-variant-numeric:tabular-nums;
+    background:rgba(212,175,106,.12); border:1px solid rgba(212,175,106,.35); border-radius:8px;
+    padding:6px 10px; margin-bottom:8px;}
+  .cat-level-base .bs{color:var(--gold);}
+  .cat-level-row{display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid rgba(255,255,255,0.05); flex-wrap:wrap;}
+  .cat-level-row:last-child{border-bottom:none;}
+  .cat-level-row .cat-left{flex:1; min-width:150px;}
+  .cat-name{font-size:13.5px; display:flex; align-items:center; gap:6px;}
+  .cat-edit{background:none;border:none;color:var(--text-dim);font-size:11px;cursor:pointer;padding:2px 4px;border-radius:4px;line-height:1;flex:0 0 auto;}
+  .cat-edit:hover{color:var(--gold);background:rgba(255,255,255,.06);}
+  .cat-name-inp{font-size:13px;font-family:inherit;background:var(--navy);border:1px solid var(--gold);color:var(--text);border-radius:6px;padding:3px 7px;width:140px;outline:none;}
+  .cat-desc{font-size:11px; color:var(--text-dim); font-variant-numeric:tabular-nums;}
+  .cat-level-row .cat-right{display:flex; align-items:center; gap:8px; flex:0 0 auto;}
+  .cat-inp{width:104px; background:var(--navy); border:1px solid var(--line); color:var(--text);
+    border-radius:8px; padding:8px 10px; font-size:13px; text-align:right; font-variant-numeric:tabular-nums; outline:none;}
+  .cat-inp:focus{border-color:var(--gold);}
+  .cat-inp.over, .cat-level-row .amount.over{color:#FF6B6B; border-color:#FF6B6B; background:rgba(255,107,107,.08);}
+  /* Заметки уровня категорий: предупреждение и ошибка */
+  .lvl-note{font-size:11.5px; line-height:1.45; padding:7px 10px; border-radius:9px; margin:2px 0 10px;}
+  .lvl-note.warn{background:rgba(212,175,106,.09); color:var(--gold); border:1px solid rgba(212,175,106,.35);}
+  .lvl-note.err{background:rgba(255,107,107,.10); color:#FF6B6B; border:1px solid rgba(255,107,107,.45);}
+  .cat-level-row .inp-sfx{font-size:12px; color:var(--text-dim); font-weight:600; flex:0 0 auto;}
+  .cat-level-row .amount{font-size:12.5px; color:var(--text-dim); font-variant-numeric:tabular-nums; white-space:nowrap; min-width:64px; text-align:right;}
 </style>
 </head>
 <body>
@@ -159,203 +330,800 @@
   <div class="sub" id="topSub">—</div>
 </div>
 
-<div class="backup-banner" id="backupBanner">
-  <span class="txt">⚠ Если меняла(-л) данные — не забудь иногда экспортировать JSON-копию (вкладка «Доходы» → «Резервная копия»), чтобы не потерять их.</span>
-  <button id="bannerClose" aria-label="Закрыть">✕</button>
+<div class="a2hs hidden" id="a2hs">
+  <span class="txt">Установите Бюджет на главный экран, чтобы пользоваться как обычным приложением, даже без интернета.</span>
+  <button id="a2hsInstall">Установить</button>
+  <button class="x" id="a2hsClose" aria-label="Закрыть">✕</button>
 </div>
 
 <main id="main"></main>
 
 <nav class="tabbar">
-  <button data-view="incomes" class="active"><span class="ic">💰</span>Доходы</button>
-  <button data-view="budget"><span class="ic">🧾</span>Траты</button>
-  <button data-view="accounts"><span class="ic">🏦</span>Счета</button>
-  <button data-view="savings"><span class="ic">📈</span>Накопл.</button>
+  <button data-view="home" class="active"><span class="ic">🏠</span>Главная</button>
+  <button data-view="incomes"><span class="ic">💰</span>Доходы</button>
+  <button data-view="settings"><span class="ic">⚙️</span>Настройки</button>
+  <button data-view="info"><span class="ic">📖</span>Инфо</button>
 </nav>
 
 <script>
-const STORAGE_KEY = "budget_app_v3";
+"use strict";
+/* =====================================================================
+   ЛОГИКА ФИНАНСОВОГО PWA-ПРИЛОЖЕНИЯ «БЮДЖЕТ»
+   Иерархическое распределение ЗП; данные — в LocalStorage;
+   экспорт/импорт JSON; офлайн через Service Worker.
+   ===================================================================== */
 
+const STORAGE_KEY = "budget_app_v4";
+
+/* ---------- состояние по умолчанию ---------- */
 function defaultState(){
   return {
-    buffer: 55000,
-    charityPct: 0.01,
-    incomes: [],
-    // категории буфера — % редактируется напрямую везде, включая спортзал
-    categories: [
-      {name:"Обязательные платежи (жильё, связь, кредиты)", pct:0.09, comment:"ЖКХ, интернет, минимальные платежи по кредитам"},
-      {name:"Питание", pct:0.27, comment:"Продукты + питание вне дома"},
-      {name:"Транспорт", pct:0.16, comment:"Бензин, общественный транспорт, такси"},
-      {name:"Личные расходы и развлечения", pct:0.25, comment:"Одежда, хобби, развлечения, подарки"},
-      {name:"Резервный фонд (подушка безопасности + непредвиденные расходы)", pct:0.12, comment:"Откладываем всегда — это и подушка, и форс-мажор. Сюда же страховка ТС и налоги."},
-      {name:"Спортзал / бассейн / сауна", pct:0.106, comment:"Абонементы — % задаётся вручную, годовая сумма считается от него ниже"},
-    ],
-    savings: [
-      {group:"safe", name:"Вклады / накопительный счёт (₽)", pct:0.35},
-      {group:"safe", name:"Облигации / денежный рынок (₽)", pct:0.15},
-      {group:"safe", name:"Юаневые вклады / облигации (CNY)", pct:0.05},
-      {group:"metal", name:"Драгоценные металлы (золото, серебро)", pct:0.15},
-      {group:"aggr", name:"Свой бизнес / дело", pct:0.15},
-      {group:"aggr", name:"Активы: акции / ETF / крипто", pct:0.15},
-    ],
-    rateRub: 0.16,
-    rateCny: 0.03,
+    storageVersion: "budget_app_v4",
+    hasDebts: false,          // «приложение работает только при отсутствии кредитов и долгов»
+    hideDebtNotice: false,    // пользователь закрыл предупреждение о долгах (крестиком) — больше не показываем
+    salary: 90000,            // текущая ЗП (100%)
+    tree: defaultTree(),      // иерархия категорий
+    incomes: [],              // история доходов: {date, amount, comment}
+    calCheck: {},             // отметки «Сделано» в календаре действий (ключ = дата|текст)
+    ui: { theme: "dark" },    // настройки UI (в текущем дизайне тема только тёмная)
   };
 }
 
+/* Дерево распределения по умолчанию (см. ТЗ):
+   ЗП(100%)
+   ├─ Благотворительность: 1% от ЗП
+   ├─ ИИС: фикс 27 350
+   ├─ ПДС: фикс 6 000
+   └─ Остаток (= 100% для уровня)
+      ├─ На жизнь: 70% от остатка
+      └─ Свободный остаток: 30% (=100%)
+         ├─ Подушка безопасности: 30%
+         └─ Агрессивные накопления: 70%
+   kind: root/ base/ pct / fixed
+   base-узел (контейнер): если есть value — берёт % от родителя; иначе — остаток.
+*/
+let uidSeq = 1;
+function defaultTree(){
+  return {
+    uid: "root", kind: "root", name: "Зарплата", custom: false,
+    children: [
+      { uid: "b1", kind: "pct",   value: 1,     name: "Благотворительность", custom: false },
+      { uid: "b2", kind: "fixed", value: 27350, name: "ИИС", custom: false },
+      { uid: "b3", kind: "fixed", value: 6000,  name: "ПДС", custom: false },
+      { uid: "b4", kind: "base",  value: null,  name: "Остаток", custom: false, children: [
+        { uid: "b5", kind: "pct", value: 70, name: "На жизнь", custom: false },
+        { uid: "b6", kind: "base", value: 30, name: "Свободный остаток", custom: false, children: [
+          { uid: "b7", kind: "pct", value: 30, name: "Подушка безопасности", custom: false },
+          { uid: "b8", kind: "pct", value: 70, name: "Агрессивные накопления", custom: false },
+        ]},
+      ]},
+    ]
+  };
+}
+
+/* ---------- загрузка / сохранение в LocalStorage ---------- */
 let state = load();
+
 function load(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
     if(!raw) return defaultState();
     const parsed = JSON.parse(raw);
-    return Object.assign(defaultState(), parsed);
+    const base = defaultState();
+    if(parsed && parsed.tree && parsed.tree.kind) base.tree = parsed.tree;
+    return Object.assign(base, parsed);
   }catch(e){ return defaultState(); }
 }
+
+// Автосохранение после каждого изменения
 function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); render(); }
 
+/* ---------- форматирование ---------- */
 function n2(v){ return (isFinite(v) && v!==null) ? v : 0; }
+// Округление денег до копейки (2 знака) — вся иерархия считает копейками.
+function round2(v){ return Math.round(n2(v) * 100) / 100; }
+// Показываем копейки, только если они есть (иначе целые рубли).
 function fmt(n){
-  n = n2(n);
+  n = round2(n);
+  if(n % 1 === 0) return n.toLocaleString('ru-RU', {maximumFractionDigits:0}) + " ₽";
   return n.toLocaleString('ru-RU', {minimumFractionDigits:2, maximumFractionDigits:2}) + " ₽";
 }
-function pctFmt(p){ return Math.round(n2(p)*1000)/10 + "%"; }
+function pctFmt(p){ return Math.round(n2(p)*10)/10 + "%"; }
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
-// ---------- вычисления (повторяют логику таблицы) ----------
-function calc(){
-  const incomes = state.incomes;
-  const n = incomes.length;
-  const lastB = n ? incomes[n-1].amount : 0;
-  const avg = n ? incomes.reduce((s,i)=>s+i.amount,0)/n : 0;
-  const last4 = incomes.slice(-4);
-  const avg4 = last4.length ? last4.reduce((s,i)=>s+i.amount,0)/last4.length : 0;
-  const totalIncome = incomes.reduce((s,i)=>s+i.amount,0);
-  const buffer = state.buffer || 0;
-
-  const cushionCat = state.categories.find(c=>c.name.startsWith("Резервный"));
-  const cushionPct = cushionCat ? cushionCat.pct : 0;
-  const cushionAmt = cushionPct * buffer;
-
-  const gymCat = state.categories.find(c=>c.name.startsWith("Спортзал"));
-  const gPct = gymCat ? gymCat.pct : 0;
-  const gymAmt = gPct * buffer;
-  const gymAnnual = gymAmt * 12;
-
-  const totalPct = state.categories.reduce((s,c)=>s+c.pct,0);
-
-  const charityPct = state.charityPct || 0;
-  const charityMonth = lastB * charityPct;
-  const charityTotal = totalIncome * charityPct;
-
-  const spentTotal = n * (buffer - cushionAmt);
-
-  const nakopMonth = Math.max(0, lastB - buffer - charityMonth);
-  const nakopTotal = totalIncome - n*buffer - charityTotal;
-
-  const tratyMonth = buffer - cushionAmt;
-
-  const shortfall = (lastB - buffer - charityMonth) < 0;
-
-  return {n, lastB, avg, avg4, totalIncome, buffer, cushionAmt, cushionPct, gPct, gymAmt, gymAnnual, totalPct,
-          spentTotal, nakopMonth, nakopTotal, tratyMonth, charityMonth, charityTotal, charityPct, shortfall};
+/* ---------- РАСЧЁТ ДЕРЕВА ----------
+   Рекурсивно заполняет у каждого узла node.amount и node.pctOfSalary.
+   Возвращает корневой узел.
+   Основание расчёта (корень) — доход за выбранный месяц/год (см. вывод месяца
+   в блоке «Доход за месяц»). Если записей нет — берётся сохранённая СУММА. */
+function computeTree(){
+  const root = state.tree;
+  const inc = getSelectedIncome();
+  const baseAmount = round2(inc.total || n2(state.salary) || 0);
+  walk(root, baseAmount, 0);
+  // Проценты — доля от фактического основания (доход за выбранный период),
+  // а не от сохранённой суммы: показываем реальную долю в распределении.
+  const rootAmt = n2(root.amount);
+  (function setPct(n){
+    (n.children||[]).forEach(ch=>{ setPct(ch); });
+    n.pctOfSalary = rootAmt>0 ? (n2(n.amount)/rootAmt)*100 : 0;
+  })(root);
+  root._income = inc;
+  return root;
 }
 
-function calcSavings(c){
-  const totalPct = state.savings.reduce((s,x)=>s+x.pct,0);
-  const groupSum = g => state.savings.filter(x=>x.group===g).reduce((s,x)=>s+x.pct,0) * c.nakopTotal;
-  const safeSum = groupSum("safe");
-  const metalSum = groupSum("metal");
-  const aggrSum = groupSum("aggr");
-  const rubItems = state.savings.filter(x=>x.group==="safe" && !/CNY|Юан/i.test(x.name));
-  const cnyItems = state.savings.filter(x=>x.group==="safe" && /CNY|Юан/i.test(x.name));
-  const rubAmt = rubItems.reduce((s,x)=>s+x.pct,0) * c.nakopTotal;
-  const cnyAmt = cnyItems.reduce((s,x)=>s+x.pct,0) * c.nakopTotal;
-  const income = rubAmt*state.rateRub + cnyAmt*state.rateCny;
-  const coverage = aggrSum ? income/aggrSum : 0;
-  return {totalPct, safeSum, metalSum, aggrSum, income, coverage};
-}
+/* ---------- выбор месяца/года на главной ----------
+   Временный выбор НЕ сохраняется: при перезагрузке страницы снова берётся
+   месяц последней записи. В пределах сеанса выбор запоминается в памяти. */
+let selMonth = null; // 1..12
+let selYear = null;
 
-// ---------- бегущая строка ----------
-function setupMarquees(root){
-  root.querySelectorAll(".marquee").forEach(el=>{
-    const track = el.querySelector(".marquee-track");
-    const first = track.querySelector("span");
-    el.classList.remove("scrolling"); el.classList.add("static");
-    track.style.animationDuration = "";
-    // двойной rAF, чтобы layout успел посчитаться
-    requestAnimationFrame(()=>requestAnimationFrame(()=>{
-      const overflow = first.scrollWidth > el.clientWidth + 1;
-      if(overflow){
-        el.classList.remove("static"); el.classList.add("scrolling");
-        const dist = first.scrollWidth + 28;
-        const duration = Math.max(6, dist/40); // ~40px/сек
-        track.style.animationDuration = duration + "s";
-      }
-    }));
+// Месяц/год последней записи в доходах (или null, если записей нет).
+// Берём самый поздний период ПО ДАТЕ, а не последний добавленный в список:
+// записи могут добавляться вразнобой, и последний элемент массива не значит
+// самый свежий. После обновления страницы должен выбираться максимальный месяц/год.
+function lastIncomePeriod(){
+  const inc = state.incomes;
+  if(!inc.length) return null;
+  let best = null;
+  inc.forEach(i => {
+    if(!i || !i.date) return;
+    const d = new Date(i.date + "T00:00:00");
+    if(isNaN(d)) return;
+    const y = d.getFullYear(), m = d.getMonth()+1;
+    if(!best || y > best.year || (y === best.year && m > best.month)){
+      best = { month: m, year: y };
+    }
   });
-}
-function marqueeHTML(text){
-  return `<div class="marquee static"><div class="marquee-track"><span>${text}</span><span aria-hidden="true">${text}</span></div></div>`;
+  return best;
 }
 
-// ---------- рендер ----------
-let activeView = "incomes";
+// Сумма всех поступлений за указанный месяц/год
+function incomeByPeriod(month, year){
+  return state.incomes.reduce((s,i)=>{
+    const d = new Date(i.date + "T00:00:00");
+    if(isNaN(d)) return s;
+    if(d.getMonth()+1 === month && d.getFullYear() === year) return s + n2(i.amount);
+    return s;
+  }, 0);
+}
 
+// Актуальный выбранный период и сумма по нему
+function getSelectedIncome(){
+  const lp = lastIncomePeriod();
+  if(!lp){ return { month: null, year: null, total: round2(state.salary) }; }
+  // при первом обращении берём месяц последней записи
+  if(selMonth === null){ selMonth = lp.month; selYear = lp.year; }
+  return { month: selMonth, year: selYear, total: round2(incomeByPeriod(selMonth, selYear)) };
+}
+
+// Процент с ОДНИМ знаком: 12 → "12%", 30.4 → "30.4%"
+function pct1(p){
+  const v = Math.round(n2(p)*10)/10;
+  return (Number.isInteger(v) ? v : v.toFixed(1)) + "%";
+}
+
+// Русские названия месяцев (для заголовка и подписи)
+const MONTHS_GEN = ["","января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
+const MONTHS_NOM = ["","Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
+// Названия месяцев для селектора (сокращённо, для компактности)
+const MONTHS_SHORT = ["","янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
+function walk(node, base, depth){
+  node._depth = depth;
+  if(node.kind === "fixed"){ node.amount = round2(node.value); node.childBase = null; return node.amount; }
+  if(node.kind === "pct"){ node.amount = round2(base * (n2(node.value)/100)); node.childBase = null; return node.amount; }
+  // контейнер (root / base): считаем его бюджет в копейках
+  const baseAmt = (node.value != null && node.kind === "base") ? round2(base * (n2(node.value)/100)) : round2(base);
+  node.amount = baseAmt;
+  // 1) распределяем pct- и fixed-детей (каждый округляется до копейки)
+  let sumKids = 0;
+  (node.children||[]).forEach(ch => {
+    if(ch.kind === "pct" || ch.kind === "fixed") sumKids += walk(ch, baseAmt, depth+1);
+  });
+  // 2) base-дети с явным процентом
+  (node.children||[]).forEach(ch => { if(ch.kind === "base" && ch.value != null) sumKids += walk(ch, baseAmt, depth+1); });
+  // 3) base-ребёнок без процента — получает ровно остаток (сумма всегда сходится)
+  const remChild = (node.children||[]).find(ch => ch.kind === "base" && ch.value == null);
+  if(remChild){
+    const rem = Math.max(0, round2(baseAmt - sumKids));
+    sumKids += walk(remChild, rem, depth+1);
+  } else if(sumKids > 0){
+    // Остаточного контейнера нет: докручиваем детей, чтобы их сумма в копейках
+    // РОВНО равнялась бюджету (иначе на 70/30 → 30/70 накапливается копеечная ошибка).
+    balanceKids(node, baseAmt, sumKids);
+  }
+  return node.amount;
+}
+
+// Корректировка: распределяет разницу в копейках по процентным детям контейнера,
+// чтобы сумма детей точно совпала с бюджетом уровня.
+function balanceKids(parent, target, sum){
+  const diffK = Math.round(target*100) - Math.round(sum*100);
+  if(diffK === 0) return;
+  const parts = (parent.children||[]).filter(ch => ch.kind==="pct" || (ch.kind==="base" && ch.value != null));
+  if(!parts.length) return;
+  const sign = diffK > 0 ? 1 : -1;
+  const n = Math.abs(diffK);
+  for(let i=0; i<n; i++){
+    // распределяем по кругу среди процентных детей
+    const part = parts[i % parts.length];
+    part.amount = round2(n2(part.amount) + sign*0.01);
+  }
+}
+
+/* Плоский список всех узлов дерева (в порядке обхода) — для отображения иерархии */
+function flatten(node, arr){
+  arr = arr || [];
+  arr.push(node);
+  (node.children||[]).forEach(c => flatten(c, arr));
+  return arr;
+}
+
+/* Только листовые категории (что идёт в график) */
+function leaves(node, arr){
+  arr = arr || [];
+  (node.children||[]).forEach(ch => {
+    if(ch.kind === "pct" || ch.kind === "fixed") arr.push(ch);
+    else leaves(ch, arr);
+  });
+  return arr;
+}
+
+/* Найти узел по uid, [опционально] вернуть родителя */
+function findNode(node, uid, parent){
+  if(node.uid === uid) return { node, parent };
+  for(const c of (node.children||[])){
+    const r = findNode(c, uid, node);
+    if(r) return r;
+  }
+  return null;
+}
+function findParentOf(node, uid, parent){
+  if((node.children||[]).some(c => c.uid === uid)) return node;
+  for(const c of (node.children||[])){
+    const r = findParentOf(c, uid, node);
+    if(r) return r;
+  }
+  return null;
+}
+
+/* Уровни вложенности для пользовательских категорий */
+const LEVELS = [
+  { id: "root", label: "Уровень 1 — от всего дохода", containerUid: "root", isBase: false },
+  { id: "ost",  label: "Уровень 2 — от Остатка", containerUid: "b4", isBase: true },
+  { id: "svob", label: "Уровень 3 — от Свободного остатка", containerUid: "b6", isBase: true },
+];
+
+function containerByLevel(levelId){
+  const L = LEVELS.find(l => l.id === levelId);
+  if(!L) return { parent: findNode(state.tree, "root").node, isBase: false };
+  if(L.containerUid === "root") return { parent: state.tree, isBase: false };
+  const p = findNode(state.tree, L.containerUid);
+  return { parent: p.node, isBase: L.isBase };
+}
+
+function freshUid(){
+  return "c" + (uidSeq++) + "_" + Math.random().toString(36).slice(2,7);
+}
+
+/* ---------- главная навигация ---------- */
+let activeView = "home";
+
+function setActiveView(v){
+  document.querySelectorAll("nav.tabbar button").forEach(b => b.classList.toggle("active", b.dataset.view === v));
+  activeView = v;
+  render();
+  const main = document.getElementById("main");
+  main.scrollTop = 0;
+}
+
+/* ---------- рендер ---------- */
 function render(){
-  const c = calc();
+  const root = computeTree();
+  const inc = root._income;
+  const totalAll = state.incomes.reduce((s,i)=>s+n2(i.amount),0);
+  const lastInc = state.incomes.length ? state.incomes[state.incomes.length-1] : null;
   document.getElementById("topSub").textContent =
-    `ЗП: ${fmt(c.lastB)} последняя · Накоплено всего: ${fmt(c.nakopTotal)}`;
+    lastInc
+      ? `ЗП: ${fmt(lastInc.amount)} последняя · Всего доходов: ${fmt(totalAll)}`
+      : `Доходов пока нет`;
 
-  document.querySelectorAll('main .view').forEach(v=>v.remove());
+  document.querySelectorAll("main .view").forEach(v => v.remove());
   const main = document.getElementById("main");
   const view = document.createElement("div");
   view.className = "view active";
   view.id = "view-"+activeView;
 
-  if(activeView==="incomes") view.innerHTML = renderIncomes(c);
-  if(activeView==="budget") view.innerHTML = renderBudget(c);
-  if(activeView==="accounts") view.innerHTML = renderAccounts(c);
-  if(activeView==="savings") view.innerHTML = renderSavings(c);
+  if(activeView === "home") view.innerHTML = renderHome(root);
+  if(activeView === "incomes") view.innerHTML = renderIncomes();
+  if(activeView === "settings") view.innerHTML = renderSettings(root);
+  if(activeView === "info") view.innerHTML = renderInfo();
 
   main.appendChild(view);
   bindEvents();
   setupMarquees(view);
+  if(activeView === "home") drawChart();
 }
 
-function renderIncomes(c){
-  const items = state.incomes.map((inc, idx)=>`
+/* ================= ЭКРАН «ГЛАВНАЯ» ================= */
+function renderHome(root){
+  const all = flatten(root);
+  const inc = root._income;
+  const total = inc.total;               // доход за выбранный период
+  const floor = Math.max(0, n2(total));
+
+  // Доступные месяцы/годы для селектора — из истории доходов
+  const avail = {};
+  state.incomes.forEach(i => {
+    const d = new Date(i.date + "T00:00:00");
+    if(isNaN(d)) return;
+    avail[d.getFullYear()] = 1;
+  });
+  const years = Object.keys(avail).map(Number).sort((a,b)=>a-b);
+  const selY = inc.year !== null ? inc.year : (years.length ? years[years.length-1] : new Date().getFullYear());
+  const monthOpts = MONTHS_NOM.map((mn, m) => m===0 ? "" : `<option value="${m}" ${inc.month===m ? "selected":""}>${mn}</option>`).join("");
+  const yearOpts = years.length
+    ? years.map(y => `<option value="${y}" ${selY===y ? "selected":""}>${y}</option>`).join("")
+    : "".concat(`<option value="${new Date().getFullYear()}">${new Date().getFullYear()}</option>`);
+
+  // Переключатель месяца и года (временный, не сохраняется)
+  const periodCtrl = `
+    <div class="period-row">
+      <select id="selMonth" class="period-select">${monthOpts}</select>
+      <select id="selYear" class="period-select">${yearOpts}</select>
+    </div>`;
+
+  // Заголовок суммы: «Доход за сентябрь 2026 г.»
+  const title = inc.month ? `Доход за ${MONTHS_NOM[inc.month].toLowerCase()} ${selY} г.` : "Доход не выбран";
+
+  // Дерево распределения: два столбца (название слева, значение справа).
+  // У контейнеров («Доход», «Остаток», «Свободный остаток») значение по центру колонки.
+  const treeHTML = all.map(node => {
+    const isContainer = (node.kind==="root"||node.kind==="base");
+    const cls = isContainer ? "container" : "";
+    // Название корня — «Доход» (вместо «Зарплата»)
+    const name = node.uid === "root" ? "Доход" : node.name;
+    const tag = node.kind==="fixed" ? '<span class="tag gray">фикс</span>'
+              : node.kind==="pct" ? '<span class="tag safe">%</span>' : "";
+    const cnt = node.custom ? `<span class="cnt">[своя]</span>` : "";
+    // Проценты без приписки «от ЗП» — только число со знаком %: 12%
+    const pctTxt = isContainer ? "" : `<span class="pct"> · ${pct1(node.pctOfSalary)}</span>`;
+    // Все строки — одним списком без отступов: названия слева, значения по колонкам
+    const myIndent = 0;
+    return `<div class="tree-line ${cls} indent-${myIndent} ${isContainer?"tree-line-c":""}">
+      <div class="tname">${cnt}${esc(name)} ${tag}</div>
+      <div class="tamount">${fmt(node.amount)}${isContainer ? "" : pctTxt}</div>
+    </div>`;
+  }).join("");
+
+  return `
+    <div class="card">
+      <h2>Распределение</h2>
+      <div class="chart-wrap">
+        <canvas id="distChart" height="320"></canvas>
+        <div class="chart-center">
+          <div class="v">${fmt(floor)}</div>
+          <div class="c">Доход за месяц</div>
+        </div>
+      </div>
+      <div class="legend" id="distLegend"></div>
+    </div>
+
+    <div class="card">
+      <h2>Доход за месяц</h2>
+      ${periodCtrl}
+      ${inc.month ? `
+        <div class="row" style="margin-top:8px;"><div class="label">${esc(title)}</div><div class="value pos">${fmt(total)}</div></div>
+      ` : `<div class="empty">Доходов пока нет — добавьте первую запись</div>`}
+      <div style="height:12px;"></div>
+      <button class="btn btn-big" id="goAddIncome"><span class="plus">＋</span>Добавить доход</button>
+    </div>
+
+    <div class="card">
+      <h2>Как делится доход</h2>
+      <div style="margin-top:4px;">${treeHTML}</div>
+    </div>
+
+    <div class="reminder">
+      📅 Заходите в таблицу минимум 1 раз — обязательно <b>27 числа</b>&nbsp;— и вносите <b>каждый доход</b>, даже если суммы небольшие.
+    </div>
+  `;
+}
+
+/* ---------- график (donut) с подписями-стрелочками ----------
+   Линии-выноски рисуются на канвасе, а сами подписи (название + сумма + %)
+   выводятся HTML-слоем поверх диаграммы — так имена не обрезаются.
+   Процент всегда с ОДНИМ знаком «%»: 12%, 30.4%.
+*/
+let chart = null;
+const CHART_COLORS = ["#D4AF6A","#5FC9B6","#E08D6E","#8FAE9B","#7BA7D6","#C79AE0","#E0B06E","#6EC8A5","#E08D9B","#9AAAC4"];
+
+// Плагин: после отрисовки секторов проводит стрелочки и строит HTML-подписи
+const leaderLabelsPlugin = {
+  id: "leaderLabels",
+  afterDatasetsDraw(chart){
+    const data = chart.data.datasets[0].data;
+    const total = data.reduce((a,b)=>a+n2(b),0);
+    if(total <= 0) return;
+    const area = chart.chartArea;
+    if(!area || area.right <= area.left || area.bottom <= area.top) return;
+    const cx = (area.left + area.right) / 2;
+    const cy = (area.top + area.bottom) / 2;
+    const outerR = Math.min(area.right-area.left, area.bottom-area.top) / 2;
+    const off = Math.min(16, outerR*0.14);            // отступ за кольцом
+    const ctx = chart.ctx;
+
+    // стрелочки-выноски
+    ctx.save();
+    ctx.strokeStyle = "rgba(154,170,196,0.6)";
+    ctx.lineWidth = 1;
+    let ang = -Math.PI/2;                             // Chart.js: сверху по часовой
+    const geos = [];
+    for(let i = 0; i < data.length; i++){
+      const val = n2(data[i]);
+      if(val <= 0) continue;
+      const frac = val / total;
+      const mid = ang + frac * Math.PI;
+      ang += frac * 2 * Math.PI;
+      const ex = cx + Math.cos(mid)*outerR, ey = cy + Math.sin(mid)*outerR;
+      const tx = cx + Math.cos(mid)*(outerR+off), ty = cy + Math.sin(mid)*(outerR+off);
+      ctx.beginPath(); ctx.moveTo(ex,ey); ctx.lineTo(tx,ty); ctx.stroke();
+      ctx.fillStyle = "#9AAAC4";
+      ctx.beginPath(); ctx.arc(tx,ty,1.6,0,Math.PI*2); ctx.fill();
+      geos.push({ i, tx, ty, right: Math.cos(mid) >= -0.1, name: chart.data.labels[i] || "",
+                  val, pct: pct1((val/total)*100) });
+    }
+    ctx.restore();
+
+    // подписи строим один раз, но перестраиваем при изменении геометрии (resize)
+    const wrap = document.getElementById("distChart")?.closest(".chart-wrap");
+    const overlayMissing = !wrap?.querySelector(".leader-overlay");
+    if(!chart.__leaderDone || overlayMissing){
+      chart.__leaderDone = true;
+      buildLeaderLabels(wrap, area, cx, cy, outerR, off, geos);
+    }
+  }
+};
+
+// Верстка HTML-слоя подписей поверх диаграммы
+function buildLeaderLabels(wrap, area, cx, cy, outerR, off, geos){
+  if(!wrap) return;
+  const old = wrap.querySelector(".leader-overlay");
+  if(old) old.remove();
+
+  const H = area.bottom - area.top;
+  const rightCol = geos.filter(g=>g.right);
+  const leftCol  = geos.filter(g=>!g.right);
+  layoutColumn(rightCol, true,  H, area.top);
+  layoutColumn(leftCol,  false, H, area.top);
+
+  const overlay = document.createElement("div");
+  overlay.className = "leader-overlay";
+  geos.forEach(g => {
+    const maxW = Math.max(64, (g.right ? area.right - g.tx - 6 : g.tx - area.left - 6));
+    const lbl = document.createElement("div");
+    lbl.className = "lbl " + (g.right ? "r" : "l");
+    lbl.style.left = g.tx + "px";
+    lbl.style.top = g.ty + "px";
+    const name = document.createElement("div");
+    name.className = "lbl-name";
+    name.style.maxWidth = Math.min(120, maxW) + "px";
+    const inner = document.createElement("span");
+    inner.className = "lbl-inner";
+    inner.textContent = g.name;
+    name.appendChild(inner);
+    const v = document.createElement("div");
+    v.className = "lbl-val";
+    v.textContent = `${fmt(g.val)} · ${g.pct}`;       // один знак «%»
+    lbl.appendChild(name);
+    lbl.appendChild(v);
+    overlay.appendChild(lbl);
+  });
+  wrap.appendChild(overlay);
+
+  // Бегущая строка для имён, не помещающихся в свою ширину
+  requestAnimationFrame(()=>{
+    overlay.querySelectorAll(".lbl-name").forEach(el=>{
+      if(el.scrollWidth > el.clientWidth + 2){
+        const dist = el.scrollWidth - el.clientWidth;
+        el.querySelector(".lbl-inner").style.setProperty("--s", (-dist)+"px");
+        el.classList.add("mq");
+      }
+    });
+  });
+}
+
+// Раскладывает метки одной колонки по вертикали (чтобы не наезжали друг на друга)
+function layoutColumn(items, dir, H, top){
+  items.sort((a,b)=>a.ty - b.ty);
+  const MIN = 18, LIMIT = 60;
+  for(let i = 0; i < items.length; i++){
+    items[i].ty = Math.max(top+10, Math.min(top+H-10, items[i].ty));
+  }
+  for(let i = 1; i < items.length; i++){
+    let n = 0;
+    while(items[i].ty - items[i-1].ty < MIN && n < LIMIT){
+      if(dir){
+        items[i].ty = Math.min(top+H-10, items[i-1].ty + MIN);
+      } else {
+        items[i-1].ty = Math.max(top+10, items[i].ty - MIN);
+      }
+      n++;
+    }
+  }
+}
+
+function drawChart(){
+  const canvas = document.getElementById("distChart");
+  if(!canvas) return;
+  const items = leaves(state.tree).filter(l => n2(l.amount) > 0);
+  const root = state.tree;
+  const total = n2(root._income && root._income.total);
+
+  // Список под диаграммой: цвет · название · сумма · процент (один знак %)
+  const legend = document.getElementById("distLegend");
+  if(legend){
+    legend.innerHTML = items.map((it, i) => `
+      <div class="lg">
+        <span class="sw" style="background:${CHART_COLORS[i % CHART_COLORS.length]}"></span>
+        <span class="nm">${esc(it.name)}</span>
+        <span class="vv">${fmt(it.amount)} · ${pct1(it.pctOfSalary)}</span>
+      </div>`).join("");
+  }
+
+  if(chart) chart.destroy();
+  if(!items.length){
+    chart = null;
+    return;
+  }
+  chart = new Chart(canvas.getContext("2d"), {
+    type: "doughnut",
+    data: {
+      labels: items.map(i => i.name),
+      datasets: [{
+        data: items.map(i => n2(i.amount)),
+        backgroundColor: items.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]),
+        borderColor: "#16315A",
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      cutout: "58%",
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const val = ctx.parsed;
+              const pct = total>0 ? (val/total*100) : 0;
+              return ` ${fmt(val)} · ${pct1(pct)}`;    // один знак «%»
+            }
+          }
+        }
+      }
+    },
+    plugins: [leaderLabelsPlugin]
+  });
+  chart.__leaderDone = false;
+  const wrap = canvas.closest(".chart-wrap");
+  if(wrap){ const o = wrap.querySelector(".leader-overlay"); if(o) o.remove(); }
+}
+
+/* ================= ЭКРАН «ДОХОДЫ» ================= */
+function renderIncomes(){
+  const inc = state.incomes;
+  const total = inc.reduce((s,i)=>s+n2(i.amount),0);
+  const avg = inc.length ? total/inc.length : 0;
+
+  const items = inc.slice().reverse().map((i, ridx) => {
+    const idx = inc.length - 1 - ridx;
+    return `
     <div class="income-item">
-      <div class="month">${inc.month}</div>
+      <div class="month">${esc(i.date || "")}${i.comment ? " · "+esc(i.comment) : ""}</div>
       <div style="display:flex;align-items:center;gap:6px;">
-        <div class="amt">${fmt(inc.amount)}</div>
+        <div class="amt">${fmt(i.amount)}</div>
         <div class="del" data-del-income="${idx}">✕</div>
       </div>
-    </div>
-  `).join("") || `<div class="empty">Пока нет записей о зарплате</div>`;
+    </div>`;
+  }).join("") || `<div class="empty">Пока нет записей о доходах</div>`;
 
   return `
     <div class="card">
       <h2>Сводка</h2>
       <div class="grid2">
-        <div class="mini"><div class="num">${fmt(c.avg)}</div><div class="cap">Средняя за всё время</div></div>
-        <div class="mini"><div class="num">${fmt(c.avg4)}</div><div class="cap">Средняя за 4 мес</div></div>
-        <div class="mini"><div class="num">${fmt(c.totalIncome)}</div><div class="cap">Сумма ЗП за всё время</div></div>
-        <div class="mini"><div class="num">${c.n}</div><div class="cap">Месяцев с ЗП</div></div>
+        <div class="mini"><div class="num">${fmt(avg)}</div><div class="cap">Средний доход</div></div>
+        <div class="mini"><div class="num">${inc.length}</div><div class="cap">Записей</div></div>
+        <div class="mini" style="grid-column:1/-1;"><div class="num">${fmt(total)}</div><div class="cap">Всего доходов</div></div>
       </div>
     </div>
     <div class="card">
-      <h2>Зарплата по месяцам</h2>
+      <h2>Добавить доход</h2>
+      <label class="field">Дата</label>
+      <input type="date" id="newDate" value="${new Date().toISOString().slice(0,10)}">
+      <div style="height:8px;"></div>
+      <label class="field">Сумма (₽)</label>
+      <input type="number" id="newAmount" placeholder="Сумма" inputmode="decimal">
+      <div style="height:8px;"></div>
+      <label class="field">Комментарий (необязательно)</label>
+      <input type="text" id="newComment" placeholder="Напр. Зарплата за март">
+      <div style="height:12px;"></div>
+      <button class="btn" id="addIncomeBtn">＋ Добавить</button>
+    </div>
+    <div class="card">
+      <h2>История доходов</h2>
       ${items}
-      <div class="add-income">
-        <input type="text" id="newMonth" placeholder="Месяц (напр. Июль 26)">
-        <input type="number" id="newAmount" placeholder="Сумма" inputmode="decimal">
+    </div>
+  `;
+}
+
+/* ================= ЭКРАН «НАСТРОЙКИ» ================= */
+// Сообщение о заблокированном изменении (проценты уровня > 100%)
+let guardMsg = null;
+// Временный черновик формы «Пользовательские категории», чтобы при блокировке
+// (render без сохранения) введённые данные не пропадали.
+let customDraft = null;
+
+// Сколько ещё процентов можно вложить в контейнер (уровень), чтобы сумма процентов
+// уровня не превысила 100%: учитываем остальные pct-категории и контейнеры,
+// у которых задан явный процент (число). Контейнеры-«остатки» (value == null)
+// сами собирают остаток и в лимит 100% не входят.
+function pctHeadroom(parent, excludeUid){
+  const children = parent.children || [];
+  const pctSum  = children.filter(c=>c.kind==="pct" && c.uid!==excludeUid).reduce((s,c)=>s+n2(c.value),0);
+  const baseSum = children.filter(c=>c.kind==="base" && c.value != null && c.uid!==excludeUid).reduce((s,c)=>s+n2(c.value),0);
+  return Math.max(0, 100 - pctSum - baseSum);
+}
+
+// Информация об уровнях иерархии (для блока «Категории»)
+const CAT_LEVELS = [
+  { containerUid: "root", baseName: "Доход", title: "Уровень 1 — от всего дохода",
+    baseShort: "всего дохода", baseFull: "доход за выбранный месяц" },
+  { containerUid: "b4",   baseName: "Остаток", title: "Уровень 2 — от остатка",
+    baseShort: "остатка", baseFull: "остаток после благотворительности, ИИС и ПДС" },
+  { containerUid: "b6",   baseName: "Свободный остаток", title: "Уровень 3 — от свободного остатка",
+    baseShort: "свободного остатка", baseFull: "свободный остаток (30% от остатка)" },
+];
+
+// Отрисовка одного редактируемого уровня категорий
+function renderCatLevel(container, info){
+  const kids = (container.children||[]).filter(ch => ch.kind==="pct" || ch.kind==="fixed");
+  if(!kids.length) return "";
+  // Статистика уровня: сколько занимают проценты, фикс-суммы и контейнеры-проценты
+  const base = n2(container.amount);                      // «Основа» уровня
+  const pctSum  = kids.filter(k=>k.kind==="pct").reduce((s,k)=>s+n2(k.value),0);
+  const fixedSum= kids.filter(k=>k.kind==="fixed").reduce((s,k)=>s+n2(k.value),0);
+  const baseSum = (container.children||[]).filter(ch=>ch.kind==="base" && ch.value != null).reduce((s,k)=>s+n2(k.value),0);
+  const fixedPct = base>0 ? fixedSum/base*100 : 0;
+  const usedPct  = pctSum + fixedPct + baseSum;           // сколько % основания задействовано
+  const overAll  = pctSum + baseSum > 100 + 1e-9;         // проценты уровня упёрлись в 100%
+  // Заметка уровня (только для уровней, где распределяются проценты)
+  let note = "";
+  if(overAll){
+    note = `<div class="lvl-note err">⚠ Сумма процентов этого уровня больше 100% — уменьшите проценты.</div>`;
+  } else if(kids.some(k=>k.kind==="pct") && usedPct < 100 - 1e-9){
+    const rem = Math.max(0, base - usedPct/100*base);
+    note = `<div class="lvl-note warn">Распределены не все средства: не распределено ≈ ${fmt(rem)} из ${fmt(base)}.</div>`;
+  }
+  const rows = kids.map(node => {
+    const isPct = node.kind === "pct";
+    const tag = node.custom ? '<span class="tag gray">своя</span>' : "";
+    // Пояснение, от чего считается значение
+    const desc = isPct
+      ? `${pctFmt(node.value)} от ${info.baseShort}`
+      : `фикс ${fmt(node.value)} · от ${info.baseShort}`;
+    // Фикс-сумма: красная, если превышает основу уровня (доход за месяц) одна или в сумме
+    const overFix = !isPct && (n2(node.value) > base || fixedSum > base);
+    const valInput = isPct
+      ? `<input type="number" class="cat-inp" data-set-value="${node.uid}" data-kind="pct" value="${n2(node.value)}" step="0.1" min="0"><span class="inp-sfx">%</span>
+         <span class="amount">${fmt(node.amount)}</span>`
+      : `<input type="number" class="cat-inp${overFix?" over":""}" data-set-value="${node.uid}" data-kind="fixed" value="${n2(node.value)}" step="1" min="0" inputmode="decimal"><span class="inp-sfx">₽</span>
+         <span class="amount${overFix?" over":""}">${fmt(node.amount)}</span>`;
+    return `
+      <div class="cat-level-row">
+        <div class="cat-left">
+          <div class="cat-name">${tag}<span class="cat-name-txt">${esc(node.name)}</span><button type="button" class="cat-edit" data-edit-name="${node.uid}" title="Переименовать">✎</button></div>
+          <div class="cat-desc">${esc(desc)}</div>
+        </div>
+        <div class="cat-right">
+          <div class="seg" data-seg="${node.uid}">
+            <button data-seg-kind="pct" class="${isPct?'active':''}">%</button>
+            <button data-seg-kind="fixed" class="${!isPct?'active':''}">₽</button>
+          </div>
+          ${valInput}
+        </div>
+      </div>`;
+  }).join("");
+  // Подзаголовок уровня + база (от чего считаются проценты) + заметка про 100%
+  return `
+    <div class="cat-level">
+      <div class="cat-level-title">${esc(info.title)}</div>
+      <div class="cat-level-base">Основа: <span class="bs">${esc(info.baseName)} — ${fmt(n2(container.amount))}</span> · ${esc(info.baseFull)}</div>
+      ${note}
+      ${rows}
+    </div>`;
+}
+
+function renderSettings(root){
+  // Сообщение о заблокированном изменении (показывается один раз)
+  const guard = guardMsg; guardMsg = null;
+  // Черновик формы своих категорий (на случай блокировки)
+  const draft = customDraft; customDraft = null;
+  // редактируемая иерархия категорий — сгруппирована по уровням
+  const levelHTML = CAT_LEVELS.map(info => {
+    const hit = findNode(state.tree, info.containerUid);
+    if(!hit) return "";
+    return renderCatLevel(hit.node, info);
+  }).join("");
+
+  // пользовательские категории (для управления уровнем/удалением)
+  const all = flatten(root);
+  const custom = all.filter(n => n.custom && (n.kind==="pct"||n.kind==="fixed"));
+  const customRows = custom.map(n => {
+    const container = findParentOf(state.tree, n.uid);
+    const levelId = LEVELS.find(L => L.containerUid === container.uid) ? LEVELS.find(L => L.containerUid === container.uid).id : "root";
+    return `
+      <div class="set-row">
+        <div class="s-name">${esc(n.name)}<small>${levelId==="root"?"Уровень 1":levelId==="ost"?"Уровень 2":"Уровень 3"} · ${n.kind==="pct" ? pctFmt(n.value) : fmt(n.value)}</small></div>
+        <select class="change-level" data-custom-level="${n.uid}">
+          <option value="root" ${levelId==="root"?"selected":""}>Ур.1 (Доход)</option>
+          <option value="ost" ${levelId==="ost"?"selected":""}>Ур.2 (Остаток)</option>
+          <option value="svob" ${levelId==="svob"?"selected":""}>Ур.3 (Своб.ост.)</option>
+        </select>
+        <button class="btn danger" data-del-custom="${n.uid}" style="width:auto;padding:8px 12px;">Удалить</button>
+      </div>`;
+  }).join("") || `<div class="lock-note">Пользовательских категорий пока нет.</div>`;
+
+  const levelOpts = LEVELS.map(l => `<option value="${l.id}" ${draft && draft.level === l.id ? "selected":""}>${l.label}</option>`).join("");
+
+  return `
+    ${state.hideDebtNotice ? "" : `
+      <div class="card">
+        <div class="debt-notice">
+          ⚠️ Этот финансовый план работает только при отсутствии кредитов и долгов. Если есть долг — сначала закройте его.
+          <button type="button" class="debt-close" data-close-debt title="Больше не показывать">✕</button>
+        </div>
+      </div>`}
+    ${guard ? `<div class="card"><div class="lvl-note err">${guard}</div></div>` : ""}
+
+    <div class="card">
+      <h2>Категории</h2>
+      <div class="section-note">Меняйте % или фиксированную сумму. Все зависимые суммы пересчитаются автоматически.</div>
+      ${levelHTML || `<div class="lock-note">Категорий нет.</div>`}
+    </div>
+
+    <div class="card">
+      <h2>Пользовательские категории</h2>
+      <div class="section-note">Добавьте свою категорию и выберите уровень вложенности.</div>
+      <label class="field">Название</label>
+      <input type="text" id="customName" placeholder="Напр. Отпуск" value="${esc(draft ? draft.name : "")}">
+      <div class="form-grid" style="margin-top:8px;">
+        <div>
+          <label class="field">Уровень</label>
+          <select id="customLevel" style="background:var(--navy);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;width:100%;font-size:14px;">${levelOpts}</select>
+        </div>
+        <div>
+          <label class="field">Тип</label>
+          <select id="customType" style="background:var(--navy);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;width:100%;font-size:14px;">
+            <option value="pct" ${!(draft && draft.type === "fixed") ? "selected":""}>Процент</option>
+            <option value="fixed" ${draft && draft.type === "fixed" ? "selected":""}>Фикс. сумма</option>
+          </select>
+        </div>
+        <div>
+          <label class="field">Значение</label>
+          <input type="number" id="customValue" placeholder="${draft && draft.type === "fixed" ? "Введите сумму" : "Введите процент"}" inputmode="decimal" value="${draft ? draft.val : ""}">
+        </div>
       </div>
       <div style="height:10px;"></div>
-      <button class="btn" id="addIncomeBtn">+ Добавить месяц</button>
+      <button class="btn" id="addCustomBtn">＋ Добавить категорию</button>
+      <div style="height:14px;"></div>
+      <h2 style="margin-top:14px;">Мои категории</h2>
+      ${customRows}
     </div>
+
     <div class="card">
       <h2>Резервная копия</h2>
-      <div class="section-note">Все данные хранятся только в этом браузере на этом телефоне. Экспортируй JSON-файл после важных изменений и сохрани его в облако (Google Диск/Telegram) — на случай переустановки или очистки кэша.</div>
+      <div class="section-note">Все данные хранятся только в этом браузере. Экспорт сохраняет ВСЁ: категории, историю доходов и настройки — для переноса на новое устройство.</div>
       <div class="add-income">
         <button class="btn" id="exportBtn">⬇ Экспорт JSON</button>
         <button class="btn secondary" id="importBtn">⬆ Импорт JSON</button>
@@ -366,164 +1134,442 @@ function renderIncomes(c){
   `;
 }
 
-function renderBudget(c){
-  const pctClass = Math.abs(c.totalPct-1) < 0.0005 ? "good" : "bad";
+/* ================= ЭКРАН «ИНФОРМАЦИЯ» ================= */
+/* Данные взяты из файла План.xlsx (листы «Справка», «Календарь действий», «Долгосрок (15 лет)») */
 
-  const catRows = state.categories.map((cat, idx)=>{
-    const amt = cat.pct * state.buffer;
+// --- Справка ---
+const SPRAVKA = [
+  {
+    title: "ИИС-3 — как устроен",
+    type: "kv",
+    rows: [
+      ["Минимальный срок", "Открыт в 2026 → 5 лет → разблокирован в 2031. Счёт не переоткрывать: для счетов 2027 года срок уже 6 лет и дальше растёт до 10."],
+      ["Две льготы сразу", "Типов А и Б у ИИС-3 нет. Вычет на взносы (13% от 400 000 ₽) и освобождение прибыли от НДФЛ (лимит 30 млн ₽) работают одновременно."],
+      ["Лимит 400 000 ₽", "Это общий котёл на ИИС-3 + ПДС + НПО, а не по 400 000 на каждый."],
+      ["Вычет ограничен вашим НДФЛ", "Вернуть можно не больше, чем удержали за год."],
+      ["Что запрещено", "Иностранные бумаги. Купоны выводить нельзя, дивиденды — можно."],
+      ["Когда льготы сгорают", "Закрытие или вывод денег до срока → все вычеты вернуть с пенями. Исключение — оплата дорогостоящего лечения по перечню правительства."],
+    ]
+  },
+  {
+    title: "ПДС — как устроен",
+    type: "kv",
+    rows: [
+      ["Срок договора", "15 лет с даты заключения, либо возраст 55 лет (ж) / 60 лет (м)."],
+      ["Софинансирование — 10 лет", "Считается от первого взноса. Договор 2027 года → выплаты за 2027–2036."],
+      ["Коэффициент", "Доход до 80 тыс./мес → 1:1. От 80 до 150 тыс. → 1:2. Свыше 150 тыс. → 1:4. Потолок всегда 36 000 ₽ в год."],
+      ["Минимум для права", "2 000 ₽ за год. Даже при низком доходе ПДС имеет смысл."],
+      ["Главная ловушка", "Обращение за выплатой по любому договору ПДС лишает права на софинансирование по всем счетам — и нынешним, и будущим."],
+      ["Выкупная сумма", "При досрочном расторжении НПФ вправе применить понижающие коэффициенты. Этот раздел договора читайте до подписания."],
+      ["Гарантия", "Взносы застрахованы на 2,8 млн ₽ — вдвое больше банковского лимита."],
+    ]
+  },
+  {
+    title: "Что происходит само, а что нет",
+    type: "kv",
+    rows: [
+      ["Господдержка ПДС", "Автоматически. НПФ передаёт данные, ФНС считает коэффициент, деньги приходят до 1 августа."],
+      ["Освобождение прибыли на ИИС", "Автоматически: при закрытии после 5 лет брокер не удержит НДФЛ."],
+      ["Налоговый вычет", "НЕ автоматически. До 20 марта в ЛК ФНС появляется предзаполненное заявление — его нужно подписать руками. Не подписали → денег нет."],
+      ["Если заявления нет", "Подать 3-НДФЛ вручную. Дедлайна нет, право живёт 3 года."],
+    ]
+  },
+  {
+    title: "Почему именно такой порядок в водопаде",
+    type: "nl",
+    rows: [
+      ["Жизнь", "Без этого всё остальное бессмысленно."],
+      ["Среднесрок", "Чтобы налог в декабре не пришлось платить из подушки или кредиткой."],
+      ["Подушка", "Выше инвестиций сознательно: без резерва вы рискуете закрыть ИИС досрочно и вернуть все вычеты с пенями. Это дороже, чем год без вычета."],
+      ["ПДС", "Самая высокая отдача во всём плане: +50% от государства сразу."],
+      ["ИИС-3", "13% вычета плюс освобождение прибыли, но деньги заперты на 5 лет."],
+      ["Своё дело", "Отдельно от подушки: подушка на беду, эти — на возможность."],
+      ["Агрессив", "Только на обычном брокерском счёте. На ИИС-3 нет иностранных бумаг, лимит выбран, деньги заперты."],
+    ]
+  },
+  {
+    title: "Оговорки",
+    type: "kv",
+    rows: [
+      ["Доход — чистыми", "Таблица считает от суммы на карте. Оклад до НДФЛ даст завышенный результат."],
+      ["Буфер — часть резерва", "Постоянно лежащая на буфере месячная зарплата и есть первый месяц подушки. Не считайте её дважды."],
+      ["Инвестдоход не учтён", "Вся книга показывает только взносы, вычеты и господдержку."],
+      ["Параметры меняются", "Ставки, лимиты и правила ПДС корректируются законами. Проверяйте актуальные условия перед подписанием договора."],
+      ["Это не рекомендация", "Расчёты справочные. Конкретные инструменты и решения — за вами; при необходимости консультируйтесь с налоговым специалистом."],
+    ]
+  },
+];
+
+// --- Календарь действий ---
+const CALENDAR = [
+  ["2026-08-15","Подготовка","Завести личный кабинет налогоплательщика","nalog.gov.ru, вход через Госуслуги. Без него вычет получить нельзя"],
+  ["2026-08-15","Подготовка","Проверить ИИС-3 у брокера","Есть ли комиссия при нулевом остатке; не закроют ли неактивный счёт. Счёт НЕ переоткрывать — потеряете год срока"],
+  ["2026-12-01","Подготовка","Выбрать НПФ для ПДС","Смотреть: доходность 2024-2025, комиссии, раздел договора о ВЫКУПНОЙ СУММЕ и понижающих коэффициентах"],
+  ["2026-12-20","Подготовка","НЕ вносить деньги в ПДС в 2026 году","Взнос в 2026 сожжёт один из 10 лет софинансирования (минус ~35 000 ₽)"],
+  ["2026-12-31","Подготовка","Закрыть кредит","Приоритет №1 до старта плана"],
+  ["2026-12-31","Подготовка","Проверить подушку безопасности","3-6 месячных расходов на накопительном счёте. Без неё стартовать нельзя: деньги запираются на 5 и 15 лет"],
+  ["2027-01-10","Ключевая дата","Заключить договор ПДС + первый взнос","Паспорт, СНИЛС, ИНН, Госуслуги. Первый взнос 6 000 ₽. С этой даты пойдут 15 лет договора"],
+  ["2027-01-10","Ключевая дата","Настроить 3 автоплатежа на дату «зарплата + 1 день»","ПДС 6 000 ₽ / ИИС-3 27 333 ₽ / накопительный счёт 4 400 ₽"],
+  ["2027-01-15","Подготовка","Уточнить в НПФ и у брокера про упрощённый вычет","Передают ли они данные в ФНС. Если нет — придётся подавать 3-НДФЛ вручную"],
+];
+
+// ежегодный цикл генерируется программно из файла «Календарь действий»
+(function buildAnnualCalendar(){
+  for(let y = 2028; y <= 2041; y++){
+    const py = y - 1;
+    CALENDAR.push([`${y}-03-20`,"Ежегодно",`ЛК ФНС: подписать заявление на вычет за ${py} г.`,"Предзаполненное заявление формируется до 20 марта. Вписать БИК и номер счёта (не карты), подписать. Само не отправится — 52 000 ₽"]);
+    CALENDAR.push([`${y}-04-30`,"Ежегодно",`Если заявления в ЛК не было — подать 3-НДФЛ за ${py} г.`,"Нужны: справка брокера о зачислении на ИИС + справка НПФ о взносах. Дедлайна нет, право живёт 3 года"]);
+    if(y <= 2037) CALENDAR.push([`${y}-08-01`,"Ежегодно",`Проверить поступление софинансирования за ${py} г.`,"Приходит автоматически до 1 августа, заявление не нужно. Смотреть в ЛК НПФ — 36 000 ₽"]);
+    CALENDAR.push([`${y}-12-20`,"Ежегодно",`Сверка взносов за ${y} год`,"ИИС + ПДС должно быть ровно 400 000 ₽. Не хватает — доплатить до 25 декабря. Больше класть смысла нет"]);
+  }
+  // особые ключевые даты
+  CALENDAR.push(["2031-12-31","Ключевая дата","ИИС-3 отработал 5 лет","Льгота заработана: прибыль освобождена от НДФЛ (лимит 30 млн ₽). Счёт НЕ закрывать — ведите дальше"]);
+  CALENDAR.push(["2036-12-20","Ключевая дата","Последний взнос в ПДС","За 2036 год выбраны 72 000 ₽. Софинансирование за 10 лет получено полностью"]);
+  CALENDAR.push(["2037-01-10","Ключевая дата","Переключить автоплатежи","ПДС — отключить. ИИС-3 — поднять с 27 333 до 33 333 ₽/мес (400 000 ₽/год)"]);
+  CALENDAR.push(["2037-08-01","Ключевая дата","Последнее софинансирование (за 2036 г.)","Итого получено 360 000 ₽. Дальше господдержки не будет"]);
+  CALENDAR.push(["2042-01-10","Ключевая дата","15 лет договору ПДС — подать заявление на выплату","Обратиться в НПФ. Единовременно или ежемесячными выплатами — зависит от суммы и правил фонда"]);
+  CALENDAR.push(["2042-03-20","Ежегодно","ЛК ФНС: подписать заявление на вычет за 2041 г.","ПОСЛЕДНИЙ вычет по этому плану: дальше только если продолжаете пополнять ИИС"]);
+  CALENDAR.push(["2042-04-30","Ежегодно","Если заявления в ЛК не было — подать 3-НДФЛ за 2041 г.","Нужны: справка брокера о зачислении на ИИС + справка НПФ о взносах. Дедлайна нет, право живёт 3 года"]);
+  CALENDAR.push(["2044-12-31","Ключевая дата","Крайний срок заявить вычет за 2041 год","Право на вычет действует 3 года. Пропущенный год можно добрать задним числом"]);
+})();
+
+const MONTHS_RU = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
+function ruDate(iso){
+  const d = new Date(iso + "T00:00:00");
+  if(isNaN(d)) return iso;
+  return `${d.getDate()} ${MONTHS_RU[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+function renderInfo(){
+  const spravkaHTML = SPRAVKA.map(s => {
+    const rows = s.type === "nl"
+      ? `<ul class="nl">${s.rows.map((r,i)=>`<li><span class="n">${i+1}.</span><span>${esc(r[0])} — ${esc(r[1])}</span></li>`).join("")}</ul>`
+      : `<div class="kv-wrap">${s.rows.map(r=>`<div class="kv"><div class="k">${esc(r[0])}</div><div class="v">${esc(r[1])}</div></div>`).join("")}</div>`;
+    return `<div class="card"><h2 class="info-section-title">${esc(s.title)}</h2>${rows}</div>`;
+  }).join("");
+
+  // Календарь действий
+  const sorted = CALENDAR.slice().sort((a,b)=>a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]));
+  const today = new Date().toISOString().slice(0,10);
+  const calHTML = sorted.map((item) => {
+    const [date, type, what, details] = item;
+    const key = date + "|" + what;
+    const done = !!state.calCheck[key];
+    const typeCls = type === "Ключевая дата" ? "key" : type === "Ежегодно" ? "year" : "podg";
+    const expired = date < today && !done;
     return `
-    <div class="cat-row">
-      <div class="title-row">${marqueeHTML(cat.name)}</div>
-      <div class="meta-row">
-        <div class="meta-left"><div class="comment">${cat.comment||""}</div></div>
-        <div class="meta-right">
-          <input type="number" class="pct-input" data-cat-pct="${idx}" value="${(cat.pct*100).toFixed(1)}" step="0.1">
-          <div class="amount">${fmt(amt)}</div>
+      <div class="cal-group ${expired ? 'warn' : ''}">
+        <span class="cal-date">${ruDate(date)}</span>
+        <span class="cal-type ${typeCls}">${esc(type)}</span>
+        <div class="cal-check ${done?'done':''}">
+          <input type="checkbox" data-cal-check="${key}" ${done?"checked":""}>
+          <div class="cal-body">
+            <div class="w">${esc(what)}</div>
+            <div class="d">${esc(details||"")}</div>
+          </div>
         </div>
-      </div>
-    </div>`;
+      </div>`;
   }).join("");
 
+  // Долгосрок (15 лет) — генерируем помесячный график 2027–2041 + сводка
+  const dolgHTML = buildDolgrosok();
+
   return `
     <div class="card">
-      <h2>Буфер — бюджет на жизнь</h2>
-      <label class="field">Сумма в месяц</label>
-      <input type="number" id="bufferInput" value="${state.buffer}" inputmode="decimal">
+      <h2>Справка</h2>
+      <div class="section-note">Правила, льготы и оговорки. Источник — лист «Справка» в План.xlsx.</div>
     </div>
+    ${spravkaHTML}
+    <div style="height:10px;"></div>
     <div class="card">
-      <h2>Категории (% от буфера)</h2>
-      <div class="section-note">% можно с одним знаком после запятой (например 10.6). Сумма всех категорий (включая спортзал) должна давать 100%.</div>
-      ${catRows}
-      <div class="check-banner ${pctClass}">${pctClass==='good' ? '✓ ИТОГО = 100%' : '⚠ ИТОГО = '+pctFmt(c.totalPct)+', должно быть 100% — подвинь проценты выше'}</div>
+      <h2>Календарь действий</h2>
+      <div class="section-note">Отмечайте выполненное галочкой. Красным — то, что нельзя пропускать. Источник — лист «Календарь действий».</div>
+      ${calHTML}
     </div>
+    <div style="height:10px;"></div>
     <div class="card">
-      <h2>Спортзал / бассейн / сауна</h2>
-      <div class="section-note">Вот сколько выделяется на абонементы в год при текущем % и буфере — меняется не здесь, а процентом в категории выше.</div>
-      <div class="row"><div class="label">Выделено на год</div><div class="value pos">${fmt(c.gymAnnual)}</div></div>
-      <div class="row"><div class="label">Выделено в месяц</div><div class="value">${fmt(c.gymAmt)}</div></div>
+      <h2>Долгосрок (15 лет)</h2>
+      <div class="section-note">Помесячный график взносов, вычетов и господдержки до 2042 года. Источник — лист «Долгосрок (15 лет)».</div>
     </div>
+    ${dolgHTML}
+    <div style="height:10px;"></div>
     <div class="card">
-      <h2>Благотворительность</h2>
-      <div class="section-note">Считается от полной ЗП, а не от буфера — отдельная доля прямо от заработка.</div>
-      <label class="field">% от ЗП в месяц</label>
-      <input type="number" id="charityInput" value="${Math.round(c.charityPct*1000)/10}" step="0.5">
-      <div class="row" style="margin-top:8px;"><div class="label">За последний месяц</div><div class="value">${fmt(c.charityMonth)}</div></div>
-      <div class="row"><div class="label">За всё время</div><div class="value">${fmt(c.charityTotal)}</div></div>
-    </div>
-    <div class="card">
-      <h2>Статистика</h2>
-      <div class="row"><div class="label">Потрачено всего (без подушки)</div><div class="value">${fmt(c.spentTotal)}</div></div>
-      <div class="row"><div class="label">Накопления за последний месяц</div><div class="value ${c.nakopMonth<=0 && c.shortfall ?'neg':'pos'}">${fmt(c.nakopMonth)}</div></div>
-      <div class="row"><div class="label">Накопления за всё время</div><div class="value pos">${fmt(c.nakopTotal)}</div></div>
-      ${c.shortfall ? `<div class="warn">⚠ Последней ЗП не хватает на буфер + благотворительность — проверь расходы в этом месяце.</div>` : ``}
+      <h2>Условия и допущения</h2>
+      ${renderDolgConditions()}
     </div>
   `;
 }
 
-function renderAccounts(c){
-  return `
-    <div class="card">
-      <div class="big-stat">
-        <div class="num">${fmt(c.lastB)}</div>
-        <div class="cap">ЗП — последнее поступление</div>
-      </div>
-      <div class="flow"><span class="arrow">↓</span> делится на буфер, благотворительность и накопления</div>
-    </div>
-    <div class="grid2">
-      <div class="mini"><div class="num">${fmt(c.buffer)}</div><div class="cap">Буфер (на жизнь)</div></div>
-      <div class="mini"><div class="num">${fmt(c.nakopMonth)}</div><div class="cap">Накопления (остаток)</div></div>
-    </div>
-    <div class="card" style="margin-top:12px;">
-      <h2>Сколько положить в этом месяце</h2>
-      <div class="row"><div class="label">Счёт «Траты»</div><div class="value">${fmt(c.tratyMonth)}</div></div>
-      <div class="row"><div class="label">Подушка безопасности</div><div class="value">${fmt(c.cushionAmt)}</div></div>
-      <div class="row"><div class="label">Благотворительность</div><div class="value">${fmt(c.charityMonth)}</div></div>
-      <div class="row"><div class="label">Накопления</div><div class="value">${fmt(c.nakopMonth)}</div></div>
-      <div class="row"><div class="label"><b>ИТОГО (= вся ЗП)</b></div><div class="value">${fmt(c.tratyMonth+c.cushionAmt+c.charityMonth+c.nakopMonth)}</div></div>
-    </div>
-  `;
-}
+function buildDolgrosok(){
+  // помесячные данные 2027–2041
+  const years = [];
+  for(let y = 2027; y <= 2041; y++){
+    const rows = [];
+    for(let m = 1; m <= 12; m++){
+      const IIS = y <= 2036 ? 27350 : 33350;
+      const PDS = y <= 2036 ? 6000 : 0;
+      const help = (y>=2028 && y<=2037 && m===8) ? 36000 : 0;      // софинансирование за прошлый год — в августе
+      const vychet = (y>=2028 && y<=2041 && m===4) ? 52000 : 0;    // возврат НДФЛ — в апреле
+      let note = "";
+      if(m===12 && y<=2041) note = ">>> 20 декабря: сверить, что взносы ИИС+ПДС за год = 400 000 ₽";
+      if(y===2028 && m===4) note = "Возврат НДФЛ за 2027 г. (13% от 400 000 ₽)";
+      else if(y>2028 && m===4) note = `Возврат НДФЛ за ${y-1} г. (13% от 400 000 ₽)`;
+      if(m===8 && help) note = `Софинансирование за ${y-1} г. (взнос 72 000 ₽ × коэф. 1:2)`;
+      rows.push({y, m, IIS, PDS, help, vychet, note});
+    }
+    years.push({ y, rows });
+  }
 
-function renderSavings(c){
-  const s = calcSavings(c);
-  const pctClass = Math.abs(s.totalPct-1) < 0.0005 ? "good" : "bad";
-  const tagFor = g => g==="safe" ? '<span class="tag safe">надёжные</span>' : g==="metal" ? '<span class="tag metal">металлы</span>' : '<span class="tag aggr">агрессивные</span>';
-  const rows = state.savings.map((sv, idx)=>{
-    const amt = sv.pct * c.nakopTotal;
+  return years.map(yr => {
+    const yrSum = {
+      IIS: yr.rows.reduce((s,r)=>s+r.IIS,0),
+      PDS: yr.rows.reduce((s,r)=>s+r.PDS,0),
+      help: yr.rows.reduce((s,r)=>s+r.help,0),
+      vychet: yr.rows.reduce((s,r)=>s+r.vychet,0),
+    };
+    const rowsHTML = yr.rows.map(r => `
+      <div class="lg-grid">
+        <div class="rv">${MONTHS_RU[r.m-1].slice(0,3)}</div>
+        <div class="rv p">${r.PDS ? fmt(r.PDS) : "—"}</div>
+        <div class="rv i">${r.help ? fmt(r.help) : "—"}</div>
+        <div class="rv i">${fmt(r.IIS)}</div>
+        <div class="rv ${r.vychet?'pos':''}">${r.vychet ? fmt(r.vychet) : "—"}</div>
+        ${r.note ? `<div class="note">${esc(r.note)}</div>` : ""}
+      </div>`).join("");
     return `
-    <div class="cat-row">
-      <div class="title-row">${marqueeHTML(sv.name)}</div>
-      <div class="meta-row">
-        <div class="meta-left">${tagFor(sv.group)}</div>
-        <div class="meta-right">
-          <input type="number" class="pct-input" data-sv-pct="${idx}" value="${(sv.pct*100).toFixed(1)}" step="0.1">
-          <div class="amount">${fmt(amt)}</div>
+      <div class="card">
+        <div class="year-head" data-year-toggle>
+          <span>${yr.y}</span>
+          <span class="sum">ИИС ${fmt(yrSum.IIS)} · ПДС ${fmt(yrSum.PDS)}${yrSum.help?` · гос ${fmt(yrSum.help)}`:""}</span>
         </div>
-      </div>
-    </div>`;
+        <div class="lg-grid">
+          <div class="hd">Месяц</div><div class="hd">ПДС</div><div class="hd">Гос</div><div class="hd">ИИС</div><div class="hd">Вычет</div>
+        </div>
+        <div class="year-body hidden">${rowsHTML}</div>
+      </div>`;
   }).join("");
-
-  const monthRows = state.savings.map((sv)=>{
-    const amtMonth = sv.pct * c.nakopMonth;
-    return `<div class="row"><div class="label">${sv.name}</div><div class="value">${fmt(amtMonth)}</div></div>`;
-  }).join("");
-
-  const covPct = Math.round(s.coverage*1000)/10;
-  const covClass = s.coverage >= 1 ? "good" : "bad";
-
-  return `
-    <div class="card">
-      <h2>Накопления — всего</h2>
-      <div class="big-stat"><div class="num">${fmt(c.nakopTotal)}</div><div class="cap">с учётом буфера и благотворительности, без подушки</div></div>
-      ${rows}
-      <div class="check-banner ${pctClass}">${pctClass==='good' ? '✓ ИТОГО = 100%' : '⚠ ИТОГО = '+pctFmt(s.totalPct)+', должно быть 100%'}</div>
-    </div>
-    <div class="card">
-      <h2>Сводка по группам</h2>
-      <div class="row"><div class="label">Надёжные (процентные)</div><div class="value">${fmt(s.safeSum)}</div></div>
-      <div class="row"><div class="label">Защитный резерв (металлы)</div><div class="value">${fmt(s.metalSum)}</div></div>
-      <div class="row"><div class="label">Агрессивные</div><div class="value">${fmt(s.aggrSum)}</div></div>
-    </div>
-    <div class="card">
-      <h2>Ставки и проверка просадки</h2>
-      <label class="field">Ставка по ₽ вкладам/облигациям</label>
-      <input type="number" id="rateRubInput" value="${Math.round(state.rateRub*1000)/10}" step="0.5">
-      <div style="height:10px;"></div>
-      <label class="field">Ставка по юаневым инструментам</label>
-      <input type="number" id="rateCnyInput" value="${Math.round(state.rateCny*1000)/10}" step="0.5">
-      <div class="row" style="margin-top:8px;"><div class="label">Ожидаемый годовой доход</div><div class="value pos">${fmt(s.income)}</div></div>
-      <div class="check-banner ${covClass}">${covClass==='good' ? '✓' : '⚠'} Покрывает ${covPct}% возможной просадки агрессивной части</div>
-    </div>
-    <div class="card">
-      <h2>Движение за этот месяц</h2>
-      <div class="section-note">Распределение накоплений последнего месяца (${fmt(c.nakopMonth)}) по тем же %.</div>
-      ${monthRows}
-    </div>
-  `;
 }
 
+function renderDolgConditions(){
+  const C = [
+    ["Доход","100 000 ₽/мес (1,2 млн ₽/год) → ставка НДФЛ 13%"],
+    ["Коэффициент софинансирования ПДС","Доход 80–150 тыс. ₽/мес → 1:2. Взнос 72 000 ₽ → господдержка 36 000 ₽"],
+    ["Срок софинансирования","10 лет с первого взноса: взносы 2027–2036, выплаты 2028–2037"],
+    ["Договор ПДС","Заключён в январе 2027 → 15 лет → деньги доступны с января 2042"],
+    ["ИИС-3","Открыт в 2026 → минимальный срок 5 лет → разблокирован в 2031, счёт ведётся дальше"],
+    ["Лимит вычета","400 000 ₽/год суммарно на ИИС-3 + ПДС. Возврат 13% = 52 000 ₽/год"],
+    ["Внимание: переплата","27 350 + 6 000 = 33 350 ₽/мес = 400 200 ₽/год. Лишние 200 ₽ вычета не дают"],
+    ["Вторая льгота ИИС-3","При закрытии после 5 лет вся прибыль освобождается от НДФЛ (лимит 30 млн ₽)"],
+    ["Инвестиционный доход","НЕ УЧТЁН. Таблица показывает только взносы, вычеты и господдержку"],
+    ["Софинансирование","Приходит автоматически, заявление не нужно"],
+    ["Вычет","Не автоматически: до 20 марта в ЛК ФНС появляется предзаполненное заявление, его надо подписать"],
+    ["Итог за 15 лет","Свои средства 6 003 000 ₽ + от государства 1 088 000 ₽ = 7 091 000 ₽ (7 143 000 ₽ с учётом последнего вычета)"],
+  ];
+  return C.map(r=>`<div class="kv"><div class="k">${esc(r[0])}</div><div class="v">${esc(r[1])}</div></div>`).join("");
+}
+
+/* ---------- бегущая строка ---------- */
+function setupMarquees(root){
+  root.querySelectorAll(".marquee").forEach(el=>{
+    const track = el.querySelector(".marquee-track");
+    const first = track.querySelector("span");
+    el.classList.remove("scrolling"); el.classList.add("static");
+    track.style.animationDuration = "";
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      const overflow = first.scrollWidth > el.clientWidth + 1;
+      if(overflow){
+        el.classList.remove("static"); el.classList.add("scrolling");
+        const dist = first.scrollWidth + 28;
+        const duration = Math.max(6, dist/40);
+        track.style.animationDuration = duration + "s";
+      }
+    }));
+  });
+}
+
+/* ================= ОБРАБОТЧИКИ ================= */
 function bindEvents(){
+  // --- Выбор месяца/года на главной (временный, не сохраняется в LocalStorage) ---
+  document.getElementById("selMonth")?.addEventListener("change", e=>{
+    selMonth = parseInt(e.target.value, 10) || null;
+    render();
+  });
+  document.getElementById("selYear")?.addEventListener("change", e=>{
+    selYear = parseInt(e.target.value, 10) || null;
+    render();
+  });
+
+  // --- Перейти к добавлению дохода ---
+  document.getElementById("goAddIncome")?.addEventListener("click", ()=>{
+    setActiveView("incomes");
+    setTimeout(()=>document.getElementById("newAmount")?.focus(), 50);
+  });
+
+  // --- Доходы: добавление ---
   document.getElementById("addIncomeBtn")?.addEventListener("click", ()=>{
-    const m = document.getElementById("newMonth").value.trim();
-    const a = parseFloat(document.getElementById("newAmount").value);
-    if(!m || isNaN(a)) return;
-    state.incomes.push({month:m, amount:a});
+    const date = document.getElementById("newDate").value;
+    const amount = parseFloat(document.getElementById("newAmount").value);
+    const comment = document.getElementById("newComment").value.trim();
+    if(!date || isNaN(amount)) return;
+    state.incomes.push({date, amount, comment});
     save();
   });
   document.querySelectorAll("[data-del-income]").forEach(el=>{
     el.addEventListener("click", ()=>{
-      state.incomes.splice(parseInt(el.dataset.delIncome),1);
+      state.incomes.splice(parseInt(el.dataset.delIncome,10),1);
       save();
     });
   });
+
+  // --- Настройки: закрыть предупреждение о долгах (больше не показывается) ---
+  document.querySelector("[data-close-debt]")?.addEventListener("click", ()=>{
+    state.hideDebtNotice = true;
+    save();
+  });
+
+  // --- Настройки: переключение тип/значение категории ---
+  document.querySelectorAll("[data-seg]").forEach(seg=>{
+    seg.querySelectorAll("button").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const uid = seg.dataset.seg;
+        const kind = btn.dataset.segKind;
+        const hit = findNode(state.tree, uid);
+        if(!hit) return;
+        const nd = hit.node;
+        // при переключении типа берём текущее «значение» за основу
+        if(kind === "pct" && nd.kind !== "pct"){
+          const newVal = nd.pctOfSalary || 1;
+          const parent = findParentOf(state.tree, uid);
+          const room = parent ? pctHeadroom(parent, uid) : 100;
+          if(newVal > room + 1e-9){
+            guardMsg = `Нельзя: сумма процентов уровня превысит 100%. Доступно ещё ${room.toFixed(1)}%.`;
+            render(); return;
+          }
+          nd.kind = "pct"; nd.value = newVal;
+        }
+        if(kind === "fixed" && nd.kind !== "fixed"){ nd.kind = "fixed"; nd.value = nd.amount || 0; }
+        save();
+      });
+    });
+  });
+
+  // --- Настройки: изменение значения ---
+  document.querySelectorAll("[data-set-value]").forEach(inp=>{
+    inp.addEventListener("change", e=>{
+      const uid = inp.dataset.setValue;
+      const hit = findNode(state.tree, uid);
+      if(!hit) return;
+      const v = parseFloat(inp.value);
+      const val = isNaN(v)?0:Math.max(0,v);
+      if(inp.dataset.kind === "pct"){
+        const room = pctHeadroom(findParentOf(state.tree, uid) || state.tree, uid);
+        if(val > room + 1e-9){
+          guardMsg = `Нельзя: сумма процентов уровня превысит 100%. Доступно ещё ${room.toFixed(1)}%.`;
+          render(); return;
+        }
+        hit.node.kind = "pct"; hit.node.value = val;
+      } else { hit.node.kind = "fixed"; hit.node.value = val; }
+      save();
+    });
+  });
+
+  // --- Настройки: добавление пользовательской категории ---
+  // Плейсхолдер поля «Значение» зависит от выбранного типа
+  document.getElementById("customType")?.addEventListener("change", e=>{
+    const v = document.getElementById("customValue");
+    if(v) v.placeholder = e.target.value === "fixed" ? "Введите сумму" : "Введите процент";
+  });
+  document.getElementById("addCustomBtn")?.addEventListener("click", ()=>{
+    const name = document.getElementById("customName").value.trim();
+    const levelId = document.getElementById("customLevel").value;
+    const type = document.getElementById("customType").value;
+    const val = parseFloat(document.getElementById("customValue").value);
+    if(!name || isNaN(val)) return;
+    const { parent } = containerByLevel(levelId);
+    if(type === "pct"){
+      const room = pctHeadroom(parent, null);
+      if(val > room + 1e-9){
+        guardMsg = `Нельзя: сумма процентов уровня превысит 100%. Доступно ещё ${room.toFixed(1)}%.`;
+        customDraft = { name, level: levelId, type, val: Math.max(0, val) };
+        render(); return;
+      }
+    }
+    parent.children = parent.children || [];
+    parent.children.push({ uid: freshUid(), kind: type==="pct"?"pct":"fixed", value: Math.max(0,val), name, custom: true });
+    save();
+  });
+
+  // --- Настройки: удаление пользовательской категории ---
+  document.querySelectorAll("[data-del-custom]").forEach(el=>{
+    el.addEventListener("click", ()=>{
+      const uid = el.dataset.delCustom;
+      const parent = findParentOf(state.tree, uid);
+      if(!parent) return;
+      parent.children = parent.children.filter(c=>c.uid !== uid);
+      save();
+    });
+  });
+
+  // --- Настройки: смена уровня пользовательской категории ---
+  document.querySelectorAll("[data-custom-level]").forEach(sel=>{
+    sel.addEventListener("change", ()=>{
+      const uid = sel.dataset.customLevel;
+      const levelId = sel.value;
+      const parent = findParentOf(state.tree, uid);
+      if(!parent) return;
+      const idx = parent.children.findIndex(c=>c.uid === uid);
+      const nd = parent.children[idx];
+      const { parent: newParent } = containerByLevel(levelId);
+      if(nd.kind === "pct" && newParent !== parent){
+        const room = pctHeadroom(newParent, uid);
+        if(n2(nd.value) > room + 1e-9){
+          guardMsg = `Нельзя: на этом уровне сумма процентов превысит 100%. Доступно ещё ${room.toFixed(1)}%.`;
+          render(); return;
+        }
+      }
+      parent.children.splice(idx,1);
+      newParent.children = newParent.children || [];
+      newParent.children.push(nd);
+      save();
+    });
+  });
+
+  // --- Настройки: переименование категории ---
+  document.querySelectorAll("[data-edit-name]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const uid = btn.dataset.editName;
+      const hit = findNode(state.tree, uid);
+      if(!hit) return;
+      const nameTxt = btn.parentElement.querySelector(".cat-name-txt");
+      const inp = document.createElement("input");
+      inp.type = "text";
+      inp.className = "cat-name-inp";
+      inp.value = hit.node.name;
+      nameTxt.replaceWith(inp);
+      btn.remove();
+      inp.focus();
+      inp.select();
+      const onDone = (commit)=>{
+        const v = (inp.value||"").trim();
+        if(commit && v && v !== hit.node.name){ hit.node.name = v; save(); }
+        else { render(); }
+      };
+      inp.addEventListener("blur", ()=>onDone(true));
+      inp.addEventListener("keydown", (e)=>{
+        if(e.key === "Enter"){ inp.blur(); }
+        if(e.key === "Escape"){ e.preventDefault(); onDone(false); }
+      });
+    });
+  });
+
+  // --- Настройки: экспорт / импорт ---
   document.getElementById("exportBtn")?.addEventListener("click", ()=>{
     const dataStr = JSON.stringify(state, null, 2);
     const blob = new Blob([dataStr], {type:"application/json"});
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    const today = new Date().toISOString().slice(0,10);
     a.href = url;
-    a.download = `budget-backup-${today}.json`;
+    a.download = `budget-backup-${new Date().toISOString().slice(0,10)}.json`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -540,12 +1586,13 @@ function bindEvents(){
     reader.onload = () => {
       try{
         const parsed = JSON.parse(reader.result);
-        if(!parsed || !Array.isArray(parsed.incomes) || !Array.isArray(parsed.categories)){
+        if(!parsed || !parsed.tree || !parsed.tree.kind){
           throw new Error("Похоже, это не файл резервной копии этого приложения.");
         }
         state = Object.assign(defaultState(), parsed);
+        if(!state.salary) state.salary = 0;
         save();
-        if(statusEl) statusEl.textContent = "✓ Данные восстановлены из файла.";
+        if(statusEl) statusEl.textContent = "✓ Данные восстановлены из файла — идеальная копия состояния.";
       }catch(err){
         if(statusEl){ statusEl.textContent = "⚠ Не удалось импортировать: " + err.message; }
       }
@@ -553,58 +1600,82 @@ function bindEvents(){
     reader.readAsText(file);
     e.target.value = "";
   });
-  document.getElementById("bufferInput")?.addEventListener("change", e=>{
-    state.buffer = parseFloat(e.target.value)||0; save();
-  });
-  document.getElementById("charityInput")?.addEventListener("change", e=>{
-    state.charityPct = (parseFloat(e.target.value)||0)/100; save();
-  });
-  document.querySelectorAll("[data-cat-pct]").forEach(el=>{
-    el.addEventListener("change", e=>{
-      state.categories[el.dataset.catPct].pct = (parseFloat(e.target.value)||0)/100; save();
+
+  // --- Информация: сворачивание лет в долгосроке ---
+  document.querySelectorAll("[data-year-toggle]").forEach(h=>{
+    h.addEventListener("click", ()=>{
+      const body = h.parentElement.querySelector(".year-body");
+      body.classList.toggle("hidden");
     });
   });
-  document.querySelectorAll("[data-sv-pct]").forEach(el=>{
-    el.addEventListener("change", e=>{
-      state.savings[el.dataset.svPct].pct = (parseFloat(e.target.value)||0)/100; save();
+
+  // --- Информация: отметки «Сделано» в календаре ---
+  document.querySelectorAll("[data-cal-check]").forEach(cb=>{
+    cb.addEventListener("change", ()=>{
+      state.calCheck[cb.dataset.calCheck] = cb.checked ? true : false;
+      save();
     });
-  });
-  document.getElementById("rateRubInput")?.addEventListener("change", e=>{
-    state.rateRub = (parseFloat(e.target.value)||0)/100; save();
-  });
-  document.getElementById("rateCnyInput")?.addEventListener("change", e=>{
-    state.rateCny = (parseFloat(e.target.value)||0)/100; save();
   });
 }
 
+/* ---------- навигация по табам ---------- */
 document.querySelectorAll("nav.tabbar button").forEach(btn=>{
-  btn.addEventListener("click", ()=>{
-    document.querySelectorAll("nav.tabbar button").forEach(b=>b.classList.remove("active"));
-    btn.classList.add("active");
-    activeView = btn.dataset.view;
-    render();
-  });
+  btn.addEventListener("click", ()=> setActiveView(btn.dataset.view));
 });
 
 window.addEventListener("resize", ()=>{
   const view = document.querySelector("main .view.active");
   if(view) setupMarquees(view);
+  if(activeView === "home") drawChart();
 });
 
-// ---------- баннер напоминания про бэкап ----------
-const BANNER_KEY = "budget_app_banner_dismissed_until";
-(function initBanner(){
-  const banner = document.getElementById("backupBanner");
-  const until = parseInt(localStorage.getItem(BANNER_KEY) || "0", 10);
-  if(Date.now() < until){ banner.classList.add("hidden"); }
-  document.getElementById("bannerClose").addEventListener("click", ()=>{
-    // прячем на 7 дней, потом напомнит снова
-    const next = Date.now() + 7*24*60*60*1000;
-    localStorage.setItem(BANNER_KEY, String(next));
-    banner.classList.add("hidden");
-  });
-})();
+document.addEventListener("visibilitychange", ()=>{
+  if(!document.hidden && activeView === "home") drawChart();
+});
 
+/* ================= PWA: установка + Service Worker ================= */
+let deferredPrompt = null;
+const A2HS_KEY = "budget_a2hs_dismissed";
+
+window.addEventListener("beforeinstallprompt", (e)=>{
+  e.preventDefault();
+  deferredPrompt = e;
+  if(!localStorage.getItem(A2HS_KEY)) showA2hs();
+});
+function showA2hs(){ document.getElementById("a2hs").classList.remove("hidden"); }
+function hideA2hs(){ document.getElementById("a2hs").classList.add("hidden"); }
+
+document.getElementById("a2hsInstall").addEventListener("click", async ()=>{
+  if(!deferredPrompt) return;
+  deferredPrompt.prompt();
+  await deferredPrompt.userChoice;
+  deferredPrompt = null;
+  hideA2hs();
+  localStorage.setItem(A2HS_KEY, "1");
+});
+document.getElementById("a2hsClose").addEventListener("click", ()=>{
+  hideA2hs();
+  localStorage.setItem(A2HS_KEY, "1");
+});
+
+window.addEventListener("appinstalled", ()=>{
+  hideA2hs();
+  localStorage.setItem(A2HS_KEY, "1");
+});
+
+// регистрация Service Worker
+if("serviceWorker" in navigator){
+  window.addEventListener("load", ()=>{
+    navigator.serviceWorker.register("./sw.js").catch(()=>{});
+  });
+}
+
+/* ---------- стиль для скрытых элементов ---------- */
+const style = document.createElement("style");
+style.textContent = ".hidden{display:none !important;}";
+document.head.appendChild(style);
+
+/* ---------- старт ---------- */
 render();
 </script>
 </body>
