@@ -390,7 +390,7 @@ function defaultState(){
    ├─ ПДС: фикс 6 000
    └─ Остаток (= 100% для уровня)
       ├─ На жизнь: 70% от остатка
-      └─ Свободный остаток: 30% (=100%)
+      └─ Свободный остаток: остаток (всё, что не ушло выше) (=100%)
          ├─ Подушка безопасности: 30%
          └─ Агрессивные накопления: 70%
    kind: root/ base/ pct / fixed
@@ -406,7 +406,7 @@ function defaultTree(){
       { uid: "b3", kind: "fixed", value: 6000,  name: "ПДС", custom: false },
       { uid: "b4", kind: "base",  value: null,  name: "Остаток", custom: false, children: [
         { uid: "b5", kind: "pct", value: 70, name: "На жизнь", custom: false },
-        { uid: "b6", kind: "base", value: 30, name: "Свободный остаток", custom: false, children: [
+        { uid: "b6", kind: "base", value: null, name: "Свободный остаток", custom: false, children: [
           { uid: "b7", kind: "pct", value: 30, name: "Подушка безопасности", custom: false },
           { uid: "b8", kind: "pct", value: 70, name: "Агрессивные накопления", custom: false },
         ]},
@@ -418,6 +418,16 @@ function defaultTree(){
 /* ---------- загрузка / сохранение в LocalStorage ---------- */
 let state = load();
 
+/* Миграция старых сохранений:
+   «Свободный остаток» стал контейнером-остатком (value: null) — он забирает
+   всё, что не раздали на уровне 2 (если раздали 60% → уходит 40%). */
+function migrateTree(t){
+  if(!t) return;
+  const hit = findNode(t, "b6");
+  const b6 = hit && hit.node;
+  if(b6 && b6.kind === "base" && b6.value === 30) b6.value = null;
+}
+
 function load(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -425,7 +435,9 @@ function load(){
     const parsed = JSON.parse(raw);
     const base = defaultState();
     if(parsed && parsed.tree && parsed.tree.kind) base.tree = parsed.tree;
-    return Object.assign(base, parsed);
+    const res = Object.assign(base, parsed);
+    migrateTree(res.tree);
+    return res;
   }catch(e){ return defaultState(); }
 }
 
@@ -881,11 +893,11 @@ function pctHeadroom(parent, excludeUid){
 // Информация об уровнях иерархии (для блока «Категории»)
 const CAT_LEVELS = [
   { containerUid: "root", baseName: "Доход", title: "Уровень 1 — от всего дохода",
-    baseShort: "всего дохода", baseFull: "доход за выбранный месяц" },
+    baseShort: "всего дохода", baseFull: "доход за выбранный месяц; остаток уходит в «Остаток»" },
   { containerUid: "b4",   baseName: "Остаток", title: "Уровень 2 — от остатка",
-    baseShort: "остатка", baseFull: "остаток после благотворительности, ИИС и ПДС" },
+    baseShort: "остатка", baseFull: "остаток после благотворительности, ИИС и ПДС; нераспределённое уходит в «Свободный остаток»" },
   { containerUid: "b6",   baseName: "Свободный остаток", title: "Уровень 3 — от свободного остатка",
-    baseShort: "свободного остатка", baseFull: "свободный остаток (30% от остатка)" },
+    baseShort: "свободного остатка", baseFull: "свободный остаток — всё, что осталось после категорий уровня 2" },
 ];
 
 // Отрисовка одного редактируемого уровня категорий
@@ -900,11 +912,14 @@ function renderCatLevel(container, info){
   const fixedPct = base>0 ? fixedSum/base*100 : 0;
   const usedPct  = pctSum + fixedPct + baseSum;           // сколько % основания задействовано
   const overAll  = pctSum + baseSum > 100 + 1e-9;         // проценты уровня упёрлись в 100%
+  // Есть ли контейнер-«остаток» (value == null): он забирает всё, что не ушло выше,
+  // поэтому уровень считается полностью распределённым, и предупреждение не нужно.
+  const hasRemainder = (container.children||[]).some(ch => ch.kind==="base" && ch.value == null);
   // Заметка уровня (только для уровней, где распределяются проценты)
   let note = "";
   if(overAll){
     note = `<div class="lvl-note err">⚠ Сумма процентов этого уровня больше 100% — уменьшите проценты.</div>`;
-  } else if(kids.some(k=>k.kind==="pct") && usedPct < 100 - 1e-9){
+  } else if(!hasRemainder && kids.some(k=>k.kind==="pct") && usedPct < 100 - 1e-9){
     const rem = Math.max(0, base - usedPct/100*base);
     note = `<div class="lvl-note warn">Распределены не все средства: не распределено ≈ ${fmt(rem)} из ${fmt(base)}.</div>`;
   }
@@ -1494,6 +1509,7 @@ function bindEvents(){
           throw new Error("Похоже, это не файл резервной копии этого приложения.");
         }
         state = Object.assign(defaultState(), parsed);
+        migrateTree(state.tree);
         if(!state.salary) state.salary = 0;
         save();
         if(statusEl) statusEl.textContent = "✓ Данные восстановлены из файла — идеальная копия состояния.";
