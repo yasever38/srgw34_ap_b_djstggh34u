@@ -34,8 +34,8 @@
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{margin:0; padding:0; background:var(--navy-deep); color:var(--text);
     font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Arial,sans-serif;
-    overscroll-behavior-y:none; height:100%;}
-  body{display:flex; flex-direction:column; height:100vh;}
+    overscroll-behavior-y:none; height:100%; overflow-x:hidden;}
+  body{display:flex; flex-direction:column; height:100vh; width:100%; max-width:100%;}
   .topbar{
     padding-top:calc(env(safe-area-inset-top,0px) + 16px);
     padding:calc(env(safe-area-inset-top,0px) + 16px) 18px 14px 18px;
@@ -45,7 +45,7 @@
   }
   .topbar h1{margin:0; font-size:20px; font-weight:700; letter-spacing:.2px;}
   .topbar .sub{font-size:12.5px; color:var(--text-dim); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-  main{flex:1; overflow-y:auto; padding:14px 14px calc(86px + env(safe-area-inset-bottom,0px)) 14px;}
+  main{flex:1; overflow-y:auto; overflow-x:hidden; min-width:0; width:100%; padding:14px 14px calc(86px + env(safe-area-inset-bottom,0px)) 14px;}
   .card{
     background:var(--navy-card);
     border:1px solid var(--line);
@@ -58,7 +58,7 @@
   .row{display:flex; justify-content:space-between; align-items:center; padding:8px 0;
     border-bottom:1px solid rgba(255,255,255,0.05); gap:10px;}
   .row:last-child{border-bottom:none;}
-  .row .label{font-size:14px; color:var(--text-dim); min-width:0; overflow:hidden;}
+  .row .label{font-size:14px; color:var(--text-dim); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .row .value{font-size:15.5px; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap;}
   .value.neg{color:var(--danger);}
   .value.pos{color:var(--good);}
@@ -67,7 +67,7 @@
   .big-stat .cap{font-size:12px; color:var(--text-dim);}
   .grid2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
   .mini{background:var(--navy); border:1px solid var(--line); border-radius:12px; padding:12px; min-width:0;}
-  .mini .num{font-size:18px; font-weight:800; font-variant-numeric:tabular-nums;}
+  .mini .num{font-size:18px; font-weight:800; font-variant-numeric:tabular-nums; word-break:break-word;}
   .mini .cap{font-size:11.5px; color:var(--text-dim); margin-top:2px;}
   input[type=text], input[type=number], input[type=date]{
     background:var(--navy); border:1px solid var(--line); color:var(--text);
@@ -97,13 +97,20 @@
   .cat-row .amount{font-size:13px; color:var(--mint); font-weight:700; min-width:74px; text-align:right; flex:0 0 auto;}
 
   /* --- бегущая строка для длинных названий --- */
-  .marquee{ overflow:hidden; white-space:nowrap; position:relative; width:100%; }
-  .marquee-track{ display:inline-flex; will-change:transform; }
+  .marquee{ overflow:hidden; white-space:nowrap; position:relative; flex:1 1 auto; min-width:0; width:100%; }
+  .marquee-track{ display:inline-flex; will-change:transform; min-width:100%; }
   .marquee-track span{ display:inline-block; white-space:nowrap; padding-right:28px; font-size:14.5px; font-weight:600;}
   .marquee.static .marquee-track{ transform:none !important; animation:none !important; }
   .marquee.static .marquee-track span:nth-child(2){ display:none; }
   @keyframes marquee-scroll{ from{transform:translateX(0);} to{transform:translateX(-50%);} }
   .marquee.scrolling .marquee-track{ animation:marquee-scroll linear infinite; }
+
+  /* Размер текста бегущей строки в разных местах */
+  .tree-line .tname .marquee-track span{font-size:13.5px; font-weight:600;}
+  .tree-line.container .tname .marquee-track span{font-size:13.5px; font-weight:800;}
+  .cat-name .marquee-track span{font-size:13px; font-weight:600;}
+  .set-row .s-name .marquee-track span{font-size:13.5px; font-weight:600;}
+  .income-item .month .marquee-track span{font-size:14px; font-weight:600; color:var(--text-dim);}
 
   .tag{display:inline-block; font-size:10px; padding:2px 7px; border-radius:20px; margin-top:4px;}
   .tag.safe{background:rgba(95,201,182,.15); color:var(--mint);}
@@ -115,7 +122,7 @@
   .income-item{display:flex; justify-content:space-between; align-items:center; padding:9px 0;
     border-bottom:1px solid rgba(255,255,255,0.05);}
   .income-item:last-child{border-bottom:none;}
-  .income-item .month{font-size:14px;}
+  .income-item .month{font-size:14px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .income-item .amt{font-weight:700; font-variant-numeric:tabular-nums;}
   .income-item .del{color:var(--text-dim); font-size:18px; padding:2px 8px; cursor:pointer;}
   .add-income{display:flex; gap:8px; margin-top:10px;}
@@ -154,27 +161,8 @@
   /* Контейнер графика */
   .chart-wrap{position:relative; width:100%; max-width:360px; margin:8px auto 4px auto;}
   .chart-center{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none; text-align:center; padding:0 20px;}
-  .chart-center .v{font-size:16px; font-weight:800; font-variant-numeric:tabular-nums;}
+  .chart-center .v{font-size:16px; font-weight:800; font-variant-numeric:tabular-nums; min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .chart-center .c{font-size:11px; color:var(--text-dim);}
-
-  /* Подписи-«стрелочки» к диаграмме (HTML-слой поверх канваса) */
-  .leader-overlay{position:absolute; inset:0; pointer-events:none; z-index:2;}
-  /* Плашка под текстом: тёмная полупрозрачная подложка, чтобы надпись читалась
-     даже если задевает саму диаграмму (даёт красивую "карточку"-подпись) */
-  .leader-overlay .lbl{position:absolute; transform:translateY(-50%); line-height:1.25;
-    background:rgba(16,29,54,.92); border:1px solid rgba(255,255,255,.10);
-    border-radius:9px; padding:4px 9px 5px;
-    box-shadow:0 2px 12px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.35);}
-  .leader-overlay .lbl.r{text-align:left;}
-  .leader-overlay .lbl.l{text-align:right; transform:translateX(-100%) translateY(-50%);}
-  .leader-overlay .lbl-name{display:block; font-size:11.5px; font-weight:600; color:#EDEFF3;
-    white-space:nowrap; overflow:hidden; position:relative;}
-  .leader-overlay .lbl-name .lbl-inner{display:inline-block; white-space:nowrap; will-change:transform;}
-  .leader-overlay .lbl-name.mq .lbl-inner{animation: lblrun 4s linear infinite alternate;}
-  .leader-overlay .lbl-val{font-size:11.5px; font-weight:700; color:var(--gold);
-    font-variant-numeric:tabular-nums; margin-top:1px;
-    text-shadow:0 1px 2px rgba(0,0,0,.6);}
-  @keyframes lblrun{from{transform:translateX(0);} to{transform:translateX(var(--s, -40px));}}
 
   /* Легенда (список распределения) под диаграммой */
   .legend{display:flex; flex-direction:column; gap:6px; margin-top:14px;}
@@ -186,7 +174,7 @@
   /* Иерархия распределения (дерево) */
   .tree-line{display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid rgba(255,255,255,0.05);}
   .tree-line:last-child{border-bottom:none;}
-  .tree-line .tname{flex:1; min-width:0; font-size:13.5px; display:flex; align-items:center; gap:6px;}
+  .tree-line .tname{flex:1; min-width:0; font-size:13.5px; display:flex; align-items:center; gap:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .tree-line .tname .cnt{color:var(--mint); font-size:11px; opacity:.9;}
   .tree-line .tamount{font-size:14px; font-weight:700; white-space:nowrap; font-variant-numeric:tabular-nums;}
   .tree-line .tamount .pct{font-size:11px; color:var(--text-dim); font-weight:600;}
@@ -302,16 +290,16 @@
     background:rgba(212,175,106,.12); border:1px solid rgba(212,175,106,.35); border-radius:8px;
     padding:6px 10px; margin-bottom:8px;}
   .cat-level-base .bs{color:var(--gold);}
-  .cat-level-row{display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid rgba(255,255,255,0.05); flex-wrap:wrap;}
+  .cat-level-row{display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid rgba(255,255,255,0.05); flex-wrap:wrap; min-width:0;}
   .cat-level-row:last-child{border-bottom:none;}
-  .cat-level-row .cat-left{flex:1; min-width:150px;}
-  .cat-name{font-size:13.5px; display:flex; align-items:center; gap:6px;}
+  .cat-level-row .cat-left{flex:1; min-width:150px; max-width:100%;}
+  .cat-name{font-size:13.5px; display:flex; align-items:center; gap:6px; min-width:0;}
   .cat-edit{background:none;border:none;color:var(--text-dim);font-size:11px;cursor:pointer;padding:2px 4px;border-radius:4px;line-height:1;flex:0 0 auto;}
   .cat-edit:hover{color:var(--gold);background:rgba(255,255,255,.06);}
-  .cat-name-inp{font-size:13px;font-family:inherit;background:var(--navy);border:1px solid var(--gold);color:var(--text);border-radius:6px;padding:3px 7px;width:140px;outline:none;}
+  .cat-name-inp{font-size:13px;font-family:inherit;background:var(--navy);border:1px solid var(--gold);color:var(--text);border-radius:6px;padding:3px 7px;width:140px;max-width:100%;min-width:0;outline:none;}
   .cat-desc{font-size:11px; color:var(--text-dim); font-variant-numeric:tabular-nums;}
-  .cat-level-row .cat-right{display:flex; align-items:center; gap:8px; flex:0 0 auto;}
-  .cat-inp{width:104px; background:var(--navy); border:1px solid var(--line); color:var(--text);
+  .cat-level-row .cat-right{display:flex; align-items:center; gap:8px; flex:0 0 auto; flex-wrap:wrap; justify-content:flex-end; min-width:0; max-width:100%;}
+  .cat-inp{width:104px; max-width:40vw; min-width:0; background:var(--navy); border:1px solid var(--line); color:var(--text);
     border-radius:8px; padding:8px 10px; font-size:13px; text-align:right; font-variant-numeric:tabular-nums; outline:none;}
   .cat-inp:focus{border-color:var(--gold);}
   .cat-inp.over, .cat-level-row .amount.over{color:#FF6B6B; border-color:#FF6B6B; background:rgba(255,107,107,.08);}
@@ -320,7 +308,33 @@
   .lvl-note.warn{background:rgba(212,175,106,.09); color:var(--gold); border:1px solid rgba(212,175,106,.35);}
   .lvl-note.err{background:rgba(255,107,107,.10); color:#FF6B6B; border:1px solid rgba(255,107,107,.45);}
   .cat-level-row .inp-sfx{font-size:12px; color:var(--text-dim); font-weight:600; flex:0 0 auto;}
-  .cat-level-row .amount{font-size:12.5px; color:var(--text-dim); font-variant-numeric:tabular-nums; white-space:nowrap; min-width:64px; text-align:right;}
+  .cat-level-row .amount{font-size:12.5px; color:var(--text-dim); font-variant-numeric:tabular-nums; white-space:nowrap; min-width:64px; text-align:right; overflow:hidden; text-overflow:ellipsis;}
+
+  /* ===== МОБИЛЬНЫЕ (узкие экраны): ничего не вылезает за кадр ===== */
+  @media (max-width:430px){
+    main{padding-left:10px; padding-right:10px;}
+    .card{padding:12px;}
+    .card h2{font-size:13.5px;}
+    .row .label{font-size:13px;}
+    .row .value{font-size:14px;}
+    .chart-center .v{font-size:15px;}
+    .chart-center .c{font-size:10px;}
+    .tree-line .tname{font-size:13px;}
+    .tree-line .tamount{font-size:13px;}
+    .tree-line.tree-line-c .tname{flex:0 0 54%;}
+    /* Категории: правый блок уходит на свою строку и переносит элементы */
+    .cat-level-row .cat-left{min-width:0;}
+    .cat-level-row .cat-right{width:100%; justify-content:flex-start;}
+    .cat-inp{width:104px; max-width:calc(50vw - 40px);}
+    .cat-level-row .amount{font-size:12px; margin-left:auto;}
+    .set-row .s-name{min-width:120px;}
+    .form-grid > *{min-width:100px;}
+    .kv .k{flex:0 0 88px; font-size:12px;}
+    .kv .v{font-size:12.5px;}
+    .lg-grid{grid-template-columns:44px 1fr 1fr 1fr 1fr; gap:4px 6px;}
+    .lg-grid .rv, .lg-grid .hd{font-size:10.5px;}
+    .reminder{font-size:12px;}
+  }
 </style>
 </head>
 <body>
@@ -430,6 +444,12 @@ function fmt(n){
 }
 function pctFmt(p){ return Math.round(n2(p)*10)/10 + "%"; }
 function esc(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+/* Бегущая строка: дублируем текст, анимация сдвига на -50%.
+   setupMarquees() измеряет ширину и включает прокрутку, только если текст не влезает. */
+function mq(html){
+  return `<div class="marquee"><div class="marquee-track"><span>${html}</span><span>${html}</span></div></div>`;
+}
 
 /* ---------- РАСЧЁТ ДЕРЕВА ----------
    Рекурсивно заполняет у каждого узла node.amount и node.pctOfSalary.
@@ -688,10 +708,12 @@ function renderHome(root){
     const cnt = node.custom ? `<span class="cnt">[своя]</span>` : "";
     // Проценты без приписки «от ЗП» — только число со знаком %: 12%
     const pctTxt = isContainer ? "" : `<span class="pct"> · ${pct1(node.pctOfSalary)}</span>`;
-    // Все строки — одним списком без отступов: названия слева, значения по колонкам
+    // Все строки — одним списком без отступов: названия слева, значения по колонкам.
+    // Длинные названия — бегущей строкой (mq), чтобы ничего не вылезало за экран.
     const myIndent = 0;
+    const nameHTML = cnt + esc(name) + (tag ? " " + tag : "");
     return `<div class="tree-line ${cls} indent-${myIndent} ${isContainer?"tree-line-c":""}">
-      <div class="tname">${cnt}${esc(name)} ${tag}</div>
+      <div class="tname">${mq(nameHTML)}</div>
       <div class="tamount">${fmt(node.amount)}${isContainer ? "" : pctTxt}</div>
     </div>`;
   }).join("");
@@ -730,128 +752,12 @@ function renderHome(root){
   `;
 }
 
-/* ---------- график (donut) с подписями-стрелочками ----------
-   Линии-выноски рисуются на канвасе, а сами подписи (название + сумма + %)
-   выводятся HTML-слоем поверх диаграммы — так имена не обрезаются.
-   Процент всегда с ОДНИМ знаком «%»: 12%, 30.4%.
+/* ---------- график (donut) ----------
+   Сектора без стрелочек и подписей: детали видны при наведении (tooltip)
+   и в списке под диаграммой. Процент — всегда с ОДНИМ знаком «%»: 12%, 30.4%.
 */
 let chart = null;
 const CHART_COLORS = ["#D4AF6A","#5FC9B6","#E08D6E","#8FAE9B","#7BA7D6","#C79AE0","#E0B06E","#6EC8A5","#E08D9B","#9AAAC4"];
-
-// Плагин: после отрисовки секторов проводит стрелочки и строит HTML-подписи
-const leaderLabelsPlugin = {
-  id: "leaderLabels",
-  afterDatasetsDraw(chart){
-    const data = chart.data.datasets[0].data;
-    const total = data.reduce((a,b)=>a+n2(b),0);
-    if(total <= 0) return;
-    const area = chart.chartArea;
-    if(!area || area.right <= area.left || area.bottom <= area.top) return;
-    const cx = (area.left + area.right) / 2;
-    const cy = (area.top + area.bottom) / 2;
-    const outerR = Math.min(area.right-area.left, area.bottom-area.top) / 2;
-    const off = Math.min(16, outerR*0.14);            // отступ за кольцом
-    const ctx = chart.ctx;
-
-    // стрелочки-выноски
-    ctx.save();
-    ctx.strokeStyle = "rgba(154,170,196,0.6)";
-    ctx.lineWidth = 1;
-    let ang = -Math.PI/2;                             // Chart.js: сверху по часовой
-    const geos = [];
-    for(let i = 0; i < data.length; i++){
-      const val = n2(data[i]);
-      if(val <= 0) continue;
-      const frac = val / total;
-      const mid = ang + frac * Math.PI;
-      ang += frac * 2 * Math.PI;
-      const ex = cx + Math.cos(mid)*outerR, ey = cy + Math.sin(mid)*outerR;
-      const tx = cx + Math.cos(mid)*(outerR+off), ty = cy + Math.sin(mid)*(outerR+off);
-      ctx.beginPath(); ctx.moveTo(ex,ey); ctx.lineTo(tx,ty); ctx.stroke();
-      ctx.fillStyle = "#9AAAC4";
-      ctx.beginPath(); ctx.arc(tx,ty,1.6,0,Math.PI*2); ctx.fill();
-      geos.push({ i, tx, ty, right: Math.cos(mid) >= -0.1, name: chart.data.labels[i] || "",
-                  val, pct: pct1((val/total)*100) });
-    }
-    ctx.restore();
-
-    // подписи строим один раз, но перестраиваем при изменении геометрии (resize)
-    const wrap = document.getElementById("distChart")?.closest(".chart-wrap");
-    const overlayMissing = !wrap?.querySelector(".leader-overlay");
-    if(!chart.__leaderDone || overlayMissing){
-      chart.__leaderDone = true;
-      buildLeaderLabels(wrap, area, cx, cy, outerR, off, geos);
-    }
-  }
-};
-
-// Верстка HTML-слоя подписей поверх диаграммы
-function buildLeaderLabels(wrap, area, cx, cy, outerR, off, geos){
-  if(!wrap) return;
-  const old = wrap.querySelector(".leader-overlay");
-  if(old) old.remove();
-
-  const H = area.bottom - area.top;
-  const rightCol = geos.filter(g=>g.right);
-  const leftCol  = geos.filter(g=>!g.right);
-  layoutColumn(rightCol, true,  H, area.top);
-  layoutColumn(leftCol,  false, H, area.top);
-
-  const overlay = document.createElement("div");
-  overlay.className = "leader-overlay";
-  geos.forEach(g => {
-    const maxW = Math.max(64, (g.right ? area.right - g.tx - 6 : g.tx - area.left - 6));
-    const lbl = document.createElement("div");
-    lbl.className = "lbl " + (g.right ? "r" : "l");
-    lbl.style.left = g.tx + "px";
-    lbl.style.top = g.ty + "px";
-    const name = document.createElement("div");
-    name.className = "lbl-name";
-    name.style.maxWidth = Math.min(120, maxW) + "px";
-    const inner = document.createElement("span");
-    inner.className = "lbl-inner";
-    inner.textContent = g.name;
-    name.appendChild(inner);
-    const v = document.createElement("div");
-    v.className = "lbl-val";
-    v.textContent = `${fmt(g.val)} · ${g.pct}`;       // один знак «%»
-    lbl.appendChild(name);
-    lbl.appendChild(v);
-    overlay.appendChild(lbl);
-  });
-  wrap.appendChild(overlay);
-
-  // Бегущая строка для имён, не помещающихся в свою ширину
-  requestAnimationFrame(()=>{
-    overlay.querySelectorAll(".lbl-name").forEach(el=>{
-      if(el.scrollWidth > el.clientWidth + 2){
-        const dist = el.scrollWidth - el.clientWidth;
-        el.querySelector(".lbl-inner").style.setProperty("--s", (-dist)+"px");
-        el.classList.add("mq");
-      }
-    });
-  });
-}
-
-// Раскладывает метки одной колонки по вертикали (чтобы не наезжали друг на друга)
-function layoutColumn(items, dir, H, top){
-  items.sort((a,b)=>a.ty - b.ty);
-  const MIN = 18, LIMIT = 60;
-  for(let i = 0; i < items.length; i++){
-    items[i].ty = Math.max(top+10, Math.min(top+H-10, items[i].ty));
-  }
-  for(let i = 1; i < items.length; i++){
-    let n = 0;
-    while(items[i].ty - items[i-1].ty < MIN && n < LIMIT){
-      if(dir){
-        items[i].ty = Math.min(top+H-10, items[i-1].ty + MIN);
-      } else {
-        items[i-1].ty = Math.max(top+10, items[i].ty - MIN);
-      }
-      n++;
-    }
-  }
-}
 
 function drawChart(){
   const canvas = document.getElementById("distChart");
@@ -903,11 +809,8 @@ function drawChart(){
         }
       }
     },
-    plugins: [leaderLabelsPlugin]
+    plugins: {}
   });
-  chart.__leaderDone = false;
-  const wrap = canvas.closest(".chart-wrap");
-  if(wrap){ const o = wrap.querySelector(".leader-overlay"); if(o) o.remove(); }
 }
 
 /* ================= ЭКРАН «ДОХОДЫ» ================= */
@@ -920,7 +823,7 @@ function renderIncomes(){
     const idx = inc.length - 1 - ridx;
     return `
     <div class="income-item">
-      <div class="month">${esc(i.date || "")}${i.comment ? " · "+esc(i.comment) : ""}</div>
+      <div class="month">${mq(esc(i.date || "") + (i.comment ? " · "+esc(i.comment) : ""))}</div>
       <div style="display:flex;align-items:center;gap:6px;">
         <div class="amt">${fmt(i.amount)}</div>
         <div class="del" data-del-income="${idx}">✕</div>
@@ -1022,7 +925,7 @@ function renderCatLevel(container, info){
     return `
       <div class="cat-level-row">
         <div class="cat-left">
-          <div class="cat-name">${tag}<span class="cat-name-txt">${esc(node.name)}</span><button type="button" class="cat-edit" data-edit-name="${node.uid}" title="Переименовать">✎</button></div>
+          <div class="cat-name">${mq(tag + esc(node.name))}<button type="button" class="cat-edit" data-edit-name="${node.uid}" title="Переименовать">✎</button></div>
           <div class="cat-desc">${esc(desc)}</div>
         </div>
         <div class="cat-right">
@@ -1064,7 +967,7 @@ function renderSettings(root){
     const levelId = LEVELS.find(L => L.containerUid === container.uid) ? LEVELS.find(L => L.containerUid === container.uid).id : "root";
     return `
       <div class="set-row">
-        <div class="s-name">${esc(n.name)}<small>${levelId==="root"?"Уровень 1":levelId==="ost"?"Уровень 2":"Уровень 3"} · ${n.kind==="pct" ? pctFmt(n.value) : fmt(n.value)}</small></div>
+        <div class="s-name">${mq(esc(n.name))}<small>${levelId==="root"?"Уровень 1":levelId==="ost"?"Уровень 2":"Уровень 3"} · ${n.kind==="pct" ? pctFmt(n.value) : fmt(n.value)}</small></div>
         <select class="change-level" data-custom-level="${n.uid}">
           <option value="root" ${levelId==="root"?"selected":""}>Ур.1 (Доход)</option>
           <option value="ost" ${levelId==="ost"?"selected":""}>Ур.2 (Остаток)</option>
@@ -1540,7 +1443,8 @@ function bindEvents(){
       const uid = btn.dataset.editName;
       const hit = findNode(state.tree, uid);
       if(!hit) return;
-      const nameTxt = btn.parentElement.querySelector(".cat-name-txt");
+      const nameTxt = btn.parentElement.querySelector(".marquee");
+      if(!nameTxt) return;
       const inp = document.createElement("input");
       inp.type = "text";
       inp.className = "cat-name-inp";
