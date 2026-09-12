@@ -442,7 +442,21 @@ function load(){
 }
 
 // Автосохранение после каждого изменения
-function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); render(); }
+function cleanTree(n){
+  const c = {};
+  for(const k in n){
+    if(k === "amount" || k === "pctOfSalary" || k === "_depth" || k === "childBase" || k === "_income") continue;
+    c[k] = n[k];
+  }
+  if(Array.isArray(n.children)) c.children = n.children.map(cleanTree);
+  return c;
+}
+
+// В state.tree после каждого рендера остаются ВЫЧИСЛЕННЫЕ поля
+// (amount, pctOfSalary, _depth, childBase, _income). В LocalStorage и в
+// экспортируемый JSON они не попадают — в хранилище кладётся чистое дерево.
+function snapState(){ return {...state, tree: cleanTree(state.tree)}; }
+function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(snapState())); render(); }
 
 /* ---------- форматирование ---------- */
 function n2(v){ return (isFinite(v) && v!==null) ? v : 0; }
@@ -471,7 +485,9 @@ function mq(html){
 function computeTree(){
   const root = state.tree;
   const inc = getSelectedIncome();
-  const baseAmount = round2(inc.total || n2(state.salary) || 0);
+  // inc.total уже корректен: при отсутствии записей это сохранённая сумма,
+  // иначе — сумма за выбранный период (может быть 0, если месяц/год пустые).
+  const baseAmount = round2(n2(inc.total));
   walk(root, baseAmount, 0);
   // Проценты — доля от фактического основания (доход за выбранный период),
   // а не от сохранённой суммы: показываем реальную долю в распределении.
@@ -506,6 +522,19 @@ function lastIncomePeriod(){
     if(!best || y > best.year || (y === best.year && m > best.month)){
       best = { month: m, year: y };
     }
+  });
+  return best;
+}
+
+// Последняя ЗАПИСЬ по дате (а не последняя добавленная в массив),
+// чтобы подзаголовок совпадал с периодом, выбранным на главной.
+function latestIncome(){
+  let best = null;
+  (state.incomes||[]).forEach(i => {
+    if(!i || !i.date) return;
+    const d = new Date(i.date + "T00:00:00");
+    if(isNaN(d)) return;
+    if(!best || d.getTime() > new Date(best.date + "T00:00:00").getTime()) best = i;
   });
   return best;
 }
@@ -654,7 +683,7 @@ function render(){
   const root = computeTree();
   const inc = root._income;
   const totalAll = state.incomes.reduce((s,i)=>s+n2(i.amount),0);
-  const lastInc = state.incomes.length ? state.incomes[state.incomes.length-1] : null;
+  const lastInc = latestIncome();
   document.getElementById("topSub").textContent =
     lastInc
       ? `ЗП: ${fmt(lastInc.amount)} последняя · Всего доходов: ${fmt(totalAll)}`
@@ -790,6 +819,12 @@ function drawChart(){
   }
 
   if(chart) chart.destroy();
+  if(typeof Chart === "undefined"){
+    // Chart.js не загрузился (например, первый запуск без интернета):
+    // легенда и суммы уже отрисованы выше — просто пропускаем диаграмму.
+    chart = null;
+    return;
+  }
   if(!items.length){
     chart = null;
     return;
@@ -1127,7 +1162,7 @@ const CALENDAR = [
   ["2026-12-31","Подготовка","Закрыть кредит","Приоритет №1 до старта плана"],
   ["2026-12-31","Подготовка","Проверить подушку безопасности","3-6 месячных расходов на накопительном счёте. Без неё стартовать нельзя: деньги запираются на 5 и 15 лет"],
   ["2027-01-10","Ключевая дата","Заключить договор ПДС + первый взнос","Паспорт, СНИЛС, ИНН, Госуслуги. Первый взнос 6 000 ₽. С этой даты пойдут 15 лет договора"],
-  ["2027-01-10","Ключевая дата","Настроить 3 автоплатежа на дату «зарплата + 1 день»","ПДС 6 000 ₽ / ИИС-3 27 333 ₽ / накопительный счёт 4 400 ₽"],
+  ["2027-01-10","Ключевая дата","Настроить 3 автоплатежа на дату «зарплата + 1 день»","ПДС 6 000 ₽ / ИИС-3 27 350 ₽ / накопительный счёт 4 400 ₽"],
   ["2027-01-15","Подготовка","Уточнить в НПФ и у брокера про упрощённый вычет","Передают ли они данные в ФНС. Если нет — придётся подавать 3-НДФЛ вручную"],
 ];
 
@@ -1143,7 +1178,7 @@ const CALENDAR = [
   // особые ключевые даты
   CALENDAR.push(["2031-12-31","Ключевая дата","ИИС-3 отработал 5 лет","Льгота заработана: прибыль освобождена от НДФЛ (лимит 30 млн ₽). Счёт НЕ закрывать — ведите дальше"]);
   CALENDAR.push(["2036-12-20","Ключевая дата","Последний взнос в ПДС","За 2036 год выбраны 72 000 ₽. Софинансирование за 10 лет получено полностью"]);
-  CALENDAR.push(["2037-01-10","Ключевая дата","Переключить автоплатежи","ПДС — отключить. ИИС-3 — поднять с 27 333 до 33 333 ₽/мес (400 000 ₽/год)"]);
+  CALENDAR.push(["2037-01-10","Ключевая дата","Переключить автоплатежи","ПДС — отключить. ИИС-3 — поднять с 27 350 до 33 350 ₽/мес (400 200 ₽/год)"]);
   CALENDAR.push(["2037-08-01","Ключевая дата","Последнее софинансирование (за 2036 г.)","Итого получено 360 000 ₽. Дальше господдержки не будет"]);
   CALENDAR.push(["2042-01-10","Ключевая дата","15 лет договору ПДС — подать заявление на выплату","Обратиться в НПФ. Единовременно или ежемесячными выплатами — зависит от суммы и правил фонда"]);
   CALENDAR.push(["2042-03-20","Ежегодно","ЛК ФНС: подписать заявление на вычет за 2041 г.","ПОСЛЕДНИЙ вычет по этому плану: дальше только если продолжаете пополнять ИИС"]);
@@ -1483,7 +1518,7 @@ function bindEvents(){
 
   // --- Настройки: экспорт / импорт ---
   document.getElementById("exportBtn")?.addEventListener("click", ()=>{
-    const dataStr = JSON.stringify(state, null, 2);
+    const dataStr = JSON.stringify(snapState(), null, 2);
     const blob = new Blob([dataStr], {type:"application/json"});
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
