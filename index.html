@@ -377,7 +377,7 @@ function defaultState(){
     hideDebtNotice: false,    // пользователь закрыл предупреждение о долгах (крестиком) — больше не показываем
     salary: 90000,            // текущая ЗП (100%)
     tree: defaultTree(),      // иерархия категорий
-    incomes: [],              // история доходов: {date, amount, comment}
+    incomes: [],              // история доходов: {id, date, amount, comment}
     calCheck: {},             // отметки «Сделано» в календаре действий (ключ = дата|текст)
     ui: { theme: "dark" },    // настройки UI (в текущем дизайне тема только тёмная)
   };
@@ -395,20 +395,24 @@ function defaultState(){
          └─ Агрессивные накопления: 70%
    kind: root/ base/ pct / fixed
    base-узел (контейнер): если есть value — берёт % от родителя; иначе — остаток.
+   baseException (только у kind:"pct"): false/не задано — процент считается от
+   общей суммы за месяц (по умолчанию); true — категория-исключение: процент
+   считается отдельно от КАЖДОГО пополнения месяца, суммы складываются
+   (см. computeTree()/calcAmounts()).
 */
 let uidSeq = 1;
 function defaultTree(){
   return {
     uid: "root", kind: "root", name: "Зарплата", custom: false,
     children: [
-      { uid: "b1", kind: "pct",   value: 1,     name: "Благотворительность", custom: false },
-      { uid: "b2", kind: "fixed", value: 27350, name: "ИИС", custom: false },
-      { uid: "b3", kind: "fixed", value: 6000,  name: "ПДС", custom: false },
+      { uid: "b1", kind: "pct",   value: 1,     name: "Благотворительность", custom: false, baseException: false },
+      { uid: "b2", kind: "fixed", value: 27350, name: "ИИС", custom: false, baseException: false },
+      { uid: "b3", kind: "fixed", value: 6000,  name: "ПДС", custom: false, baseException: false },
       { uid: "b4", kind: "base",  value: null,  name: "Остаток", custom: false, children: [
-        { uid: "b5", kind: "pct", value: 70, name: "На жизнь", custom: false },
+        { uid: "b5", kind: "pct", value: 70, name: "На жизнь", custom: false, baseException: false },
         { uid: "b6", kind: "base", value: null, name: "Свободный остаток", custom: false, children: [
-          { uid: "b7", kind: "pct", value: 30, name: "Подушка безопасности", custom: false },
-          { uid: "b8", kind: "pct", value: 70, name: "Агрессивные накопления", custom: false },
+          { uid: "b7", kind: "pct", value: 30, name: "Подушка безопасности", custom: false, baseException: false },
+          { uid: "b8", kind: "pct", value: 70, name: "Агрессивные накопления", custom: false, baseException: false },
         ]},
       ]},
     ]
@@ -428,6 +432,12 @@ function migrateTree(t){
   if(b6 && b6.kind === "base" && b6.value === 30) b6.value = null;
 }
 
+// Старые записи доходов создавались без id (id нужен, чтобы выбирать конкретное
+// пополнение на главной — индекс в массиве «плывёт» при удалении).
+function migrateIncomes(list){
+  (list||[]).forEach(i => { if(i && !i.id) i.id = freshUid(); });
+}
+
 function load(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -437,6 +447,7 @@ function load(){
     if(parsed && parsed.tree && parsed.tree.kind) base.tree = parsed.tree;
     const res = Object.assign(base, parsed);
     migrateTree(res.tree);
+    migrateIncomes(res.incomes);
     return res;
   }catch(e){ return defaultState(); }
 }
@@ -445,7 +456,7 @@ function load(){
 function cleanTree(n){
   const c = {};
   for(const k in n){
-    if(k === "amount" || k === "pctOfSalary" || k === "_depth" || k === "childBase" || k === "_income") continue;
+    if(k === "amount" || k === "viewAmount" || k === "pctOfSalary" || k === "_depth" || k === "childBase" || k === "_income" || k === "_fixedWarnings") continue;
     c[k] = n[k];
   }
   if(Array.isArray(n.children)) c.children = n.children.map(cleanTree);
@@ -453,8 +464,9 @@ function cleanTree(n){
 }
 
 // В state.tree после каждого рендера остаются ВЫЧИСЛЕННЫЕ поля
-// (amount, pctOfSalary, _depth, childBase, _income). В LocalStorage и в
-// экспортируемый JSON они не попадают — в хранилище кладётся чистое дерево.
+// (amount, viewAmount, pctOfSalary, _depth, childBase, _income,
+// _fixedWarnings). В LocalStorage и в экспортируемый JSON они не попадают —
+// в хранилище кладётся чистое дерево.
 function snapState(){ return {...state, tree: cleanTree(state.tree)}; }
 function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(snapState())); render(); }
 
@@ -478,25 +490,283 @@ function mq(html){
 }
 
 /* ---------- РАСЧЁТ ДЕРЕВА ----------
-   Рекурсивно заполняет у каждого узла node.amount и node.pctOfSalary.
-   Возвращает корневой узел.
-   Основание расчёта (корень) — доход за выбранный месяц/год (см. вывод месяца
-   в блоке «Доход за месяц»). Если записей нет — берётся сохранённая СУММА. */
+   Рекурсивно вычисляет суммы узлов. Возвращает корневой узел (state.tree)
+   с заполненными node.amount / node.pctOfSalary.
+   Основание расчёта (корень) — доход за выбранный месяц/год, либо одно
+   выбранное пополнение (см. getSelectedIncome()). Если записей нет — берётся
+   сохранённая СУММА (state.salary).
+
+   Категории-исключения (node.baseException === true на pct- ИЛИ fixed-узле,
+   см. defaultTree()): их сумма считается НЕ от общего основания, а отдельно
+   по каждому пополнению месяца и складывается — «сколько уходит в эту
+   категорию с каждой выплаты». Для этого прогоняется «теневой» расчёт
+   (calcAmounts) по каждому пополнению отдельно (как если бы оно было
+   единственным доходом месяца): сумма по ВСЕМ пополнениям месяца идёт в
+   канонический расчёт (node.amount, не зависит от выбора на главной — его
+   читают Настройки), а сумма по ОДНОМУ выбранному на главной пополнению
+   (если оно выбрано) — только в отображение (node.viewAmount).
+
+   Защита фикс-сумм (действует ВСЕГДА — и на доход за месяц целиком, и на
+   расчёт по одному пополнению): фиксированные категории по своей природе не
+   масштабируются вместе с доходом. Основания НЕ ограничиваем, пока дохода
+   хватает — только предупреждаем, если уходит много:
+     • фикс-суммы контейнера ≤ основания (дохода хватает) — используются
+       ПОЛНОСТЬЮ, без урезания;
+       — если при этом они > 70% основания — просто предупреждение
+         («уходит больше 70% дохода»), расчёт не меняется;
+     • фикс-суммы > основания (дохода НЕ хватает даже на них целиком) —
+       вот тогда защита: урезаем РОВНО до 50% основания, остальное уходит
+       другим категориям, чтобы они не остались пустыми.
+   Оба события попадают в warnList для сообщения пользователю (разные по
+   смыслу — kind: "high" вместо ограничения и "shortfall" при урезании).
+   Если основание — не единая выплата, а несколько пополнений месяца:
+   и 70%-предупреждение, и 50%-урезание считаются от суммы месяца целиком,
+   а при просмотре одного пополнения агрегатный результат пропорционально
+   масштабируется на него (см. computeTree()) — поэтому доля (в т.ч. урезанные
+   50%) получается РАВНОМЕРНОЙ по каждой отдельной выплате. */
+function collectExceptionUids(node, set){
+  set = set || new Set();
+  if((node.kind === "pct" || node.kind === "fixed") && node.baseException) set.add(node.uid);
+  (node.children||[]).forEach(ch => collectExceptionUids(ch, set));
+  return set;
+}
+
+// Чистый (без побочных эффектов) расчёт: заполняет out (Map uid -> сумма).
+// overrides — принудительные суммы для части pct/fixed-узлов (категории-исключения)
+// или null, если исключений нет. warnList — массив, куда добавляются события
+// урезания фикс-сумм (или null, если такие события в этом расчёте не нужно
+// собирать).
+function calcAmounts(node, base, overrides, out, warnList){
+  if(node.kind === "pct"){
+    const forced = overrides && Object.prototype.hasOwnProperty.call(overrides, node.uid);
+    const amt = forced ? round2(overrides[node.uid]) : round2(base * (n2(node.value)/100));
+    out.set(node.uid, amt);
+    return amt;
+  }
+  // контейнер (root / base): считаем его бюджет в копейках
+  const baseAmt = (node.value != null && node.kind === "base") ? round2(base * (n2(node.value)/100)) : round2(base);
+  out.set(node.uid, baseAmt);
+
+  const kids = node.children || [];
+  const fixedKids = kids.filter(ch => ch.kind === "fixed");
+  const pctKids   = kids.filter(ch => ch.kind === "pct");
+
+  let sumKids = 0;
+  // hasOverrideChild: среди детей есть категория-исключение (pct или fixed),
+  // либо фикс-суммы были урезаны/исключены защитой выше — в обоих случаях
+  // сумма детей МОЖЕТ заметно отличаться от «нормальной» доли (не на копейки),
+  // и копеечную балансировку ниже делать нельзя — иначе вся разница спишется
+  // на соседнюю категорию.
+  let hasOverrideChild = false;
+
+  // --- фикс-категории считаем группой: нужно видеть их общую сумму сразу ---
+  const overrideFixed = [], plainFixed = [];
+  fixedKids.forEach(ch => {
+    if(overrides && Object.prototype.hasOwnProperty.call(overrides, ch.uid)) overrideFixed.push(ch);
+    else plainFixed.push(ch);
+  });
+  overrideFixed.forEach(ch => {
+    const amt = round2(overrides[ch.uid]);
+    out.set(ch.uid, amt);
+    sumKids += amt;
+    hasOverrideChild = true;
+  });
+  if(plainFixed.length){
+    const nominal = round2(plainFixed.reduce((s,ch) => s + n2(ch.value), 0));
+    if(nominal > baseAmt + 1e-9){
+      // Дохода не хватает даже на фикс-суммы целиком — урезаем РОВНО до 50%
+      // основания, остальное уходит другим категориям. При масштабировании
+      // на отдельные пополнения (computeTree()) это автоматически даёт ровно
+      // 50% от КАЖДОГО пополнения.
+      const cap = round2(baseAmt*0.5);
+      plainFixed.forEach(ch => {
+        const share = round2(cap * (n2(ch.value)/nominal));
+        out.set(ch.uid, share);
+        sumKids += share;
+      });
+      hasOverrideChild = true;
+      if(warnList) warnList.push({ containerUid: node.uid, names: plainFixed.map(c=>c.name), nominal, base: baseAmt, cap, kind: "shortfall" });
+    } else {
+      // Дохода хватает — используем фикс-суммы ПОЛНОСТЬЮ, без урезания.
+      plainFixed.forEach(ch => {
+        const amt = round2(n2(ch.value));
+        out.set(ch.uid, amt);
+        sumKids += amt;
+      });
+      if(warnList && nominal > round2(baseAmt*0.7) + 1e-9){
+        // Просто предупреждение — расчёт НЕ меняется, дохода достаточно.
+        warnList.push({ containerUid: node.uid, names: plainFixed.map(c=>c.name), nominal, base: baseAmt, kind: "high" });
+      }
+    }
+  }
+
+  // --- процентные категории ---
+  pctKids.forEach(ch => {
+    sumKids += calcAmounts(ch, baseAmt, overrides, out, warnList);
+    if(overrides && Object.prototype.hasOwnProperty.call(overrides, ch.uid)) hasOverrideChild = true;
+  });
+
+  // base-дети с явным процентом
+  kids.forEach(ch => { if(ch.kind === "base" && ch.value != null) sumKids += calcAmounts(ch, baseAmt, overrides, out, warnList); });
+  // base-ребёнок без процента — получает ровно остаток (сумма всегда сходится,
+  // в том числе честно учитывает реальную сумму категорий-исключений и
+  // урезанных фикс-категорий)
+  const remChild = kids.find(ch => ch.kind === "base" && ch.value == null);
+  if(remChild){
+    const rem = Math.max(0, round2(baseAmt - sumKids));
+    sumKids += calcAmounts(remChild, rem, overrides, out, warnList);
+  } else if(sumKids > 0 && !hasOverrideChild){
+    // Остаточного контейнера нет: докручиваем детей, чтобы их сумма в копейках
+    // РОВНО равнялась бюджету (иначе на 70/30 → 30/70 накапливается копеечная ошибка).
+    balanceKidsPure(node, baseAmt, sumKids, out);
+  }
+  return baseAmt;
+}
+
+// Корректировка (чистая версия balanceKids): выравнивает сумму детей контейнера
+// РОВНО в target. Для копеечной погрешности округления (обычная ситуация —
+// например, 70%/30% от суммы в копейках) докручивает по кругу, как раньше.
+// Но если контейнер БЕЗ остаточного child'а (например, «Свободный остаток»)
+// оказался перегружен НЕ на копейки — скажем, пользователь добавил свою
+// фиксированную категорию поверх уже занятых 100% процентов на этом уровне —
+// копеечный цикл превратился бы в сотни тысяч итераций (зависание) и мог бы
+// увести суммы в минус. В этом случае вместо цикла пропорционально
+// масштабируем все «части» (% и base-с-процентом), чтобы их сумма точно
+// уложилась в бюджет уровня — быстро (O(1)) и никогда не уходя в минус.
+function balanceKidsPure(parent, target, sum, out){
+  const diffK = Math.round(target*100) - Math.round(sum*100);
+  if(diffK === 0) return;
+  const parts = (parent.children||[]).filter(ch => ch.kind==="pct" || (ch.kind==="base" && ch.value != null));
+  if(!parts.length) return;
+  if(Math.abs(diffK) <= 200){ // не больше ~2 ₽ — это копеечное округление
+    const sign = diffK > 0 ? 1 : -1;
+    const n = Math.abs(diffK);
+    for(let i=0; i<n; i++){
+      const part = parts[i % parts.length];
+      out.set(part.uid, round2(n2(out.get(part.uid)) + sign*0.01));
+    }
+    return;
+  }
+  const partsSum = parts.reduce((s,p) => s + n2(out.get(p.uid)), 0);
+  const otherSum = round2(sum - partsSum); // прочие дети контейнера (фикс-категории), уже посчитаны в out
+  const partsTarget = Math.max(0, round2(target - otherSum));
+  const scale = partsSum > 0 ? partsTarget/partsSum : 0;
+  parts.forEach(p => out.set(p.uid, round2(n2(out.get(p.uid)) * scale)));
+}
+
+// Переносит рассчитанные суммы из Map в дерево. applyAmounts -> node.amount
+// (канонический, ВСЕГДА агрегированный за месяц расчёт — его читают
+// Настройки и все проверки корректности). applyViewAmounts -> node.viewAmount
+// (то, что реально показывается на главной — см. computeTree()).
+function applyAmounts(node, map){
+  node.amount = round2(n2(map.get(node.uid)));
+  (node.children||[]).forEach(ch => applyAmounts(ch, map));
+}
+function applyViewAmounts(node, map){
+  node.viewAmount = round2(n2(map.get(node.uid)));
+  (node.children||[]).forEach(ch => applyViewAmounts(ch, map));
+}
+
 function computeTree(){
   const root = state.tree;
   const inc = getSelectedIncome();
-  // inc.total уже корректен: при отсутствии записей это сохранённая сумма,
-  // иначе — сумма за выбранный период (может быть 0, если месяц/год пустые).
-  const baseAmount = round2(n2(inc.total));
-  walk(root, baseAmount, 0);
-  // Проценты — доля от фактического основания (доход за выбранный период),
-  // а не от сохранённой суммы: показываем реальную долю в распределении.
-  const rootAmt = n2(root.amount);
+  // «Официальное» дерево (node.amount: проценты, контейнеры, фикс-категории
+  // в режиме «Месяц») ВСЕГДА считается от суммы за месяц целиком (или от
+  // сохранённой ЗП, если доходов ещё нет вовсе) — единственная база для
+  // расчёта и для проверок в Настройках, независимо от того, выбрано ли на
+  // главной какое-то одно пополнение. Иначе категории «Месяц» (например,
+  // ИИС/ПДС) при просмотре одного маленького пополнения вели бы себя так,
+  // будто это пополнение — весь доход месяца, и «съедали» бы его целиком —
+  // а заодно в Настройках ложно подсвечивались бы как «превышают основу».
+  const monthBase = round2(n2(inc.selectedEntry ? inc.monthTotal : inc.total));
+
+  const exceptionUids = collectExceptionUids(root);
+  // aggOverrides — сумма категорий-исключений по ВСЕМ пополнениям месяца
+  // (не зависит от выбора на главной) — идёт в канонический расчёт (amount).
+  // entryOverrides — сумма ТОЛЬКО по выбранному пополнению (если оно выбрано)
+  // — идёт только в отображение (viewAmount). Считаем обоими один проход по
+  // всем пополнениям месяца — это единственный источник правды. Защита
+  // фикс-сумм (см. calcAmounts()) в этом «теневом» проходе действует всегда,
+  // так как база здесь — всегда одно конкретное пополнение.
+  let aggOverrides = null, entryOverrides = null;
+  const entryWarnings = [];
+  if(exceptionUids.size && inc.entries.length){
+    aggOverrides = {};
+    if(inc.selectedEntry) entryOverrides = {};
+    inc.entries.forEach(e => {
+      const shadow = new Map();
+      const warns = [];
+      calcAmounts(root, round2(n2(e.amount)), null, shadow, warns);
+      warns.forEach(w => entryWarnings.push(Object.assign({ scope: "entry", entryId: e.id, entryDate: e.date, entryComment: e.comment || "" }, w)));
+      exceptionUids.forEach(uid => {
+        aggOverrides[uid] = round2(n2(aggOverrides[uid]) + n2(shadow.get(uid)));
+        if(entryOverrides && e.id === inc.selectedEntry.id){
+          entryOverrides[uid] = round2(n2(shadow.get(uid)));
+        }
+      });
+    });
+  }
+
+  // Основной (канонический) расчёт — всегда от месячной базы, категории-
+  // исключения — суммой по ВСЕМ пополнениям месяца (aggOverrides): это
+  // агрегированный план месяца, не зависящий от выбора на главной. Защита
+  // фикс-сумм действует и здесь: если ИИС/ПДС (режим «Месяц») в сумме больше
+  // половины дохода за месяц — урезаются до 50% (см. calcAmounts()). Кладём
+  // в node.amount — читают Настройки и все проверки корректности.
+  const mainMap = new Map();
+  const monthWarnings = [];
+  // Предупреждения о фикс-суммах собираем, только если в выбранном периоде
+  // реально ЕСТЬ пополнения (inc.entries.length) — иначе для пустого месяца
+  // (доход = 0, потому что записей ещё нет) выйдет обманчивое «фиксированные
+  // суммы больше дохода», хотя на деле это просто отсутствие данных, а не
+  // нехватка денег.
+  calcAmounts(root, monthBase, aggOverrides, mainMap, inc.entries.length ? monthWarnings : null);
+  applyAmounts(root, mainMap);
+
+  // Отображение на главной (node.viewAmount): если выбрано одно конкретное
+  // пополнение — это ЛУПА над уже посчитанным месячным деревом: обычные
+  // категории («Месяц») пропорционально масштабируются к сумме этого
+  // пополнения (честная раскладка месячного плана на конкретную выплату,
+  // суммы всегда сходятся — в том числе 50%-ное урезание фикс-сумм при
+  // масштабировании автоматически превращается в ровно 50% от КАЖДОГО
+  // отдельного пополнения), категории-исключения показывают именно свою
+  // сумму по ЭТОМУ пополнению (entryOverrides), а не аггрегат и не его
+  // масштабированную копию. Если выбрано «Итого за месяц» — viewAmount = amount.
+  let viewMap = mainMap;
+  if(inc.selectedEntry && monthBase > 0){
+    const ratio = n2(inc.selectedEntry.amount) / monthBase;
+    viewMap = new Map(mainMap);
+    (function scaleView(n){
+      if(exceptionUids.has(n.uid)){
+        if(entryOverrides && Object.prototype.hasOwnProperty.call(entryOverrides, n.uid)){
+          viewMap.set(n.uid, round2(entryOverrides[n.uid]));
+        }
+      } else {
+        viewMap.set(n.uid, round2(n2(viewMap.get(n.uid)) * ratio));
+      }
+      (n.children||[]).forEach(scaleView);
+    })(root);
+  }
+  applyViewAmounts(root, viewMap);
+
+  // Предупреждения: месячные (доход за месяц целиком меньше фикс-сумм)
+  // показываем всегда — это про «официальный» план и видно независимо от
+  // выбора на главной. По одному пополнению (для категорий-исключений) —
+  // только для того, что реально выбрано на главной.
+  const visibleEntryWarnings = inc.selectedEntry
+    ? entryWarnings.filter(w => w.entryId === inc.selectedEntry.id)
+    : entryWarnings;
+  const visibleWarnings = monthWarnings.map(w => Object.assign({ scope: "month" }, w)).concat(visibleEntryWarnings);
+
+  // Проценты для показа на главной — от того, что реально просматривается
+  // (месяц целиком либо одно пополнение), поэтому считаются от viewAmount.
+  const viewRootAmt = n2(root.viewAmount);
   (function setPct(n){
     (n.children||[]).forEach(ch=>{ setPct(ch); });
-    n.pctOfSalary = rootAmt>0 ? (n2(n.amount)/rootAmt)*100 : 0;
+    n.pctOfSalary = viewRootAmt>0 ? (n2(n.viewAmount)/viewRootAmt)*100 : 0;
   })(root);
   root._income = inc;
+  root._fixedWarnings = visibleWarnings;
   return root;
 }
 
@@ -505,6 +775,11 @@ function computeTree(){
    месяц последней записи. В пределах сеанса выбор запоминается в памяти. */
 let selMonth = null; // 1..12
 let selYear = null;
+// Ручной выбор конкретного пополнения на главной (сессионный, не сохраняется):
+// null       — авто, показываем «Итого за месяц» (по умолчанию)
+// "__ALL__"  — пользователь явно выбрал «Итого за месяц»
+// иначе      — id конкретного пополнения
+let selIncomeChoice = null;
 
 // Месяц/год последней записи в доходах (или null, если записей нет).
 // Берём самый поздний период ПО ДАТЕ, а не последний добавленный в список:
@@ -549,13 +824,44 @@ function incomeByPeriod(month, year){
   }, 0);
 }
 
-// Актуальный выбранный период и сумма по нему
+// Список отдельных поступлений за указанный месяц/год (для селектора «Пополнение»)
+function incomeEntriesByPeriod(month, year){
+  return state.incomes.filter(i => {
+    if(!i || !i.date) return false;
+    const d = new Date(i.date + "T00:00:00");
+    if(isNaN(d)) return false;
+    return d.getMonth()+1 === month && d.getFullYear() === year;
+  });
+}
+
+// Какое конкретно пополнение считать «основанием» для процентов (или null — берём сумму месяца).
+// По умолчанию всегда «Итого за месяц» — конкретное пополнение только по ручному выбору
+// в селекторе на главной (влияет и на предпросмотр, и на расчёт категорий-исключений).
+function resolveIncomeSelection(entries){
+  if(selIncomeChoice === "__ALL__") return null; // пользователь явно выбрал «Итого за месяц»
+  if(selIncomeChoice){
+    const found = entries.find(e => e.id === selIncomeChoice);
+    if(found) return found;
+    selIncomeChoice = null; // выбранное пополнение удалено/из другого периода — сбрасываем на авто
+  }
+  return null;
+}
+
+// Актуальный выбранный период и сумма-основание для расчёта дерева.
+// total       — сумма, от которой считается 100% (либо сумма месяца, либо одно пополнение);
+// monthTotal  — сумма ВСЕХ пополнений месяца (для доп. блока «Итого за месяц»);
+// entries     — список пополнений месяца (для селектора);
+// selectedEntry — конкретное выбранное пополнение, если выбрано.
 function getSelectedIncome(){
   const lp = lastIncomePeriod();
-  if(!lp){ return { month: null, year: null, total: round2(state.salary) }; }
+  if(!lp){ return { month: null, year: null, total: round2(state.salary), monthTotal: 0, entries: [], selectedEntry: null }; }
   // при первом обращении берём месяц последней записи
   if(selMonth === null){ selMonth = lp.month; selYear = lp.year; }
-  return { month: selMonth, year: selYear, total: round2(incomeByPeriod(selMonth, selYear)) };
+  const entries = incomeEntriesByPeriod(selMonth, selYear);
+  const monthTotal = round2(entries.reduce((s,i)=>s+n2(i.amount),0));
+  const selectedEntry = resolveIncomeSelection(entries);
+  const total = selectedEntry ? round2(n2(selectedEntry.amount)) : monthTotal;
+  return { month: selMonth, year: selYear, total, monthTotal, entries, selectedEntry };
 }
 
 // Процент с ОДНИМ знаком: 12 → "12%", 30.4 → "30.4%"
@@ -569,49 +875,6 @@ const MONTHS_GEN = ["","января","февраля","марта","апрел�
 const MONTHS_NOM = ["","Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
 // Названия месяцев для селектора (сокращённо, для компактности)
 const MONTHS_SHORT = ["","янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
-function walk(node, base, depth){
-  node._depth = depth;
-  if(node.kind === "fixed"){ node.amount = round2(node.value); node.childBase = null; return node.amount; }
-  if(node.kind === "pct"){ node.amount = round2(base * (n2(node.value)/100)); node.childBase = null; return node.amount; }
-  // контейнер (root / base): считаем его бюджет в копейках
-  const baseAmt = (node.value != null && node.kind === "base") ? round2(base * (n2(node.value)/100)) : round2(base);
-  node.amount = baseAmt;
-  // 1) распределяем pct- и fixed-детей (каждый округляется до копейки)
-  let sumKids = 0;
-  (node.children||[]).forEach(ch => {
-    if(ch.kind === "pct" || ch.kind === "fixed") sumKids += walk(ch, baseAmt, depth+1);
-  });
-  // 2) base-дети с явным процентом
-  (node.children||[]).forEach(ch => { if(ch.kind === "base" && ch.value != null) sumKids += walk(ch, baseAmt, depth+1); });
-  // 3) base-ребёнок без процента — получает ровно остаток (сумма всегда сходится)
-  const remChild = (node.children||[]).find(ch => ch.kind === "base" && ch.value == null);
-  if(remChild){
-    const rem = Math.max(0, round2(baseAmt - sumKids));
-    sumKids += walk(remChild, rem, depth+1);
-  } else if(sumKids > 0){
-    // Остаточного контейнера нет: докручиваем детей, чтобы их сумма в копейках
-    // РОВНО равнялась бюджету (иначе на 70/30 → 30/70 накапливается копеечная ошибка).
-    balanceKids(node, baseAmt, sumKids);
-  }
-  return node.amount;
-}
-
-// Корректировка: распределяет разницу в копейках по процентным детям контейнера,
-// чтобы сумма детей точно совпала с бюджетом уровня.
-function balanceKids(parent, target, sum){
-  const diffK = Math.round(target*100) - Math.round(sum*100);
-  if(diffK === 0) return;
-  const parts = (parent.children||[]).filter(ch => ch.kind==="pct" || (ch.kind==="base" && ch.value != null));
-  if(!parts.length) return;
-  const sign = diffK > 0 ? 1 : -1;
-  const n = Math.abs(diffK);
-  for(let i=0; i<n; i++){
-    // распределяем по кругу среди процентных детей
-    const part = parts[i % parts.length];
-    part.amount = round2(n2(part.amount) + sign*0.01);
-  }
-}
-
 /* Плоский список всех узлов дерева (в порядке обхода) — для отображения иерархии */
 function flatten(node, arr){
   arr = arr || [];
@@ -657,10 +920,12 @@ const LEVELS = [
 
 function containerByLevel(levelId){
   const L = LEVELS.find(l => l.id === levelId);
-  if(!L) return { parent: findNode(state.tree, "root").node, isBase: false };
-  if(L.containerUid === "root") return { parent: state.tree, isBase: false };
+  // Если уровень не найден или ссылается на контейнер, которого нет в дереве
+  // (например, после ручной правки импортированного JSON) — безопасно
+  // откатываемся на корень, а не падаем с ошибкой.
+  if(!L || L.containerUid === "root") return { parent: state.tree, isBase: false };
   const p = findNode(state.tree, L.containerUid);
-  return { parent: p.node, isBase: L.isBase };
+  return { parent: p ? p.node : state.tree, isBase: L.isBase };
 }
 
 function freshUid(){
@@ -734,8 +999,40 @@ function renderHome(root){
       <select id="selYear" class="period-select">${yearOpts}</select>
     </div>`;
 
-  // Заголовок суммы: «Доход за сентябрь 2026 г.»
-  const title = inc.month ? `Доход за ${MONTHS_NOM[inc.month].toLowerCase()} ${selY} г.` : "Доход не выбран";
+  // Селектор конкретного пополнения месяца (появляется, если есть хоть одно пополнение).
+  // «Итого за месяц» всегда первым пунктом — выбор основания для расчёта % не сохраняется,
+  // это сессионный просмотр (аналогично выбору месяца/года).
+  const incomeSelCtrl = inc.entries.length ? `
+    <div class="period-row" style="margin-top:8px;">
+      <select id="selIncomeEntry" class="period-select" style="flex:1 1 100%;">
+        <option value="__ALL__" ${!inc.selectedEntry ? "selected":""}>Итого за месяц — ${fmt(inc.monthTotal)}</option>
+        ${inc.entries.map(e => `<option value="${esc(e.id)}" ${inc.selectedEntry && inc.selectedEntry.id===e.id ? "selected":""}>${esc(e.date)}${e.comment ? " · "+esc(e.comment) : ""} — ${fmt(e.amount)}</option>`).join("")}
+      </select>
+    </div>` : "";
+
+  // Заголовок суммы: «Доход за сентябрь 2026 г.» либо «Пополнение от ...», если выбрано одно
+  const title = inc.selectedEntry
+    ? `Пополнение от ${inc.selectedEntry.date}${inc.selectedEntry.comment ? " · "+inc.selectedEntry.comment : ""}`
+    : (inc.month ? `Доход за ${MONTHS_NOM[inc.month].toLowerCase()} ${selY} г.` : "Доход не выбран");
+  const chartCaption = inc.selectedEntry ? "Выбранное пополнение" : "Доход за месяц";
+
+  // Предупреждения о фикс-суммах (см. calcAmounts()/computeTree()):
+  // kind:"high" — дохода хватает, расчёт НЕ меняется, просто предупреждаем,
+  // что уходит больше 70%; kind:"shortfall" — дохода не хватает даже на
+  // фикс-суммы целиком, используется не более 50%, остальное — другим
+  // категориям. scope:"month" — про доход за месяц целиком (видно всегда);
+  // scope:"entry" — про конкретное пополнение при расчёте категории-
+  // исключения (видно только когда оно выбрано или в просмотре «Итого»).
+  const fixedWarnHTML = (root._fixedWarnings || []).map(w => {
+    const list = `«${w.names.map(esc).join('», «')}»`;
+    const where = w.scope === "month" ? "дохода за месяц" : "этого пополнения";
+    if(w.kind === "high"){
+      const pct = w.base > 0 ? Math.round(w.nominal/w.base*1000)/10 : 0;
+      return `<div class="check-banner bad">⚠ На фиксированные категории ${list} уходит ${pct}% ${where} (${fmt(w.nominal)} из ${fmt(w.base)}) — это больше 70%.</div>`;
+    }
+    const prefix = w.scope === "entry" ? `Для расчёта категории-исключения (пополнение от ${esc(w.entryDate)}${w.entryComment ? " · "+esc(w.entryComment) : ""}): ` : "";
+    return `<div class="check-banner bad">⚠ ${prefix}Фиксированные категории ${list} (${fmt(w.nominal)}) больше ${where} (${fmt(w.base)}) — использовано не более 50% (${fmt(w.cap)}), остальное распределено по другим категориям.</div>`;
+  }).join("");
 
   // Дерево распределения: два столбца (название слева, значение справа).
   // У контейнеров («Доход», «Остаток», «Свободный остаток») значение по центру колонки.
@@ -744,8 +1041,8 @@ function renderHome(root){
     const cls = isContainer ? "container" : "";
     // Название корня — «Доход» (вместо «Зарплата»)
     const name = node.uid === "root" ? "Доход" : node.name;
-    const tag = node.kind==="fixed" ? '<span class="tag gray">фикс</span>'
-              : node.kind==="pct" ? '<span class="tag safe">%</span>' : "";
+    const tag = node.kind==="fixed" ? '<span class="tag gray">фикс</span>' + (node.baseException ? ' <span class="tag metal">с пополнения</span>' : "")
+              : node.kind==="pct" ? '<span class="tag safe">%</span>' + (node.baseException ? ' <span class="tag metal">с пополнения</span>' : "") : "";
     const cnt = node.custom ? `<span class="cnt">[своя]</span>` : "";
     // Проценты без приписки «от ЗП» — только число со знаком %: 12%
     const pctTxt = isContainer ? "" : `<span class="pct"> · ${pct1(node.pctOfSalary)}</span>`;
@@ -755,7 +1052,7 @@ function renderHome(root){
     const nameHTML = cnt + esc(name) + (tag ? " " + tag : "");
     return `<div class="tree-line ${cls} indent-${myIndent} ${isContainer?"tree-line-c":""}">
       <div class="tname">${mq(nameHTML)}</div>
-      <div class="tamount">${fmt(node.amount)}${isContainer ? "" : pctTxt}</div>
+      <div class="tamount">${fmt(node.viewAmount)}${isContainer ? "" : pctTxt}</div>
     </div>`;
   }).join("");
 
@@ -766,7 +1063,7 @@ function renderHome(root){
         <canvas id="distChart" height="320"></canvas>
         <div class="chart-center">
           <div class="v">${fmt(floor)}</div>
-          <div class="c">Доход за месяц</div>
+          <div class="c">${esc(chartCaption)}</div>
         </div>
       </div>
       <div class="legend" id="distLegend"></div>
@@ -775,8 +1072,10 @@ function renderHome(root){
     <div class="card">
       <h2>Доход за месяц</h2>
       ${periodCtrl}
+      ${incomeSelCtrl}
       ${inc.month ? `
         <div class="row" style="margin-top:8px;"><div class="label">${esc(title)}</div><div class="value pos">${fmt(total)}</div></div>
+        ${fixedWarnHTML}
       ` : `<div class="empty">Доходов пока нет — добавьте первую запись</div>`}
       <div style="height:12px;"></div>
       <button class="btn btn-big" id="goAddIncome"><span class="plus">＋</span>Добавить доход</button>
@@ -803,7 +1102,7 @@ const CHART_COLORS = ["#D4AF6A","#5FC9B6","#E08D6E","#8FAE9B","#7BA7D6","#C79AE0
 function drawChart(){
   const canvas = document.getElementById("distChart");
   if(!canvas) return;
-  const items = leaves(state.tree).filter(l => n2(l.amount) > 0);
+  const items = leaves(state.tree).filter(l => n2(l.viewAmount) > 0);
   const root = state.tree;
   const total = n2(root._income && root._income.total);
 
@@ -814,7 +1113,7 @@ function drawChart(){
       <div class="lg">
         <span class="sw" style="background:${CHART_COLORS[i % CHART_COLORS.length]}"></span>
         <span class="nm">${esc(it.name)}</span>
-        <span class="vv">${fmt(it.amount)} · ${pct1(it.pctOfSalary)}</span>
+        <span class="vv">${fmt(it.viewAmount)} · ${pct1(it.pctOfSalary)}</span>
       </div>`).join("");
   }
 
@@ -834,7 +1133,7 @@ function drawChart(){
     data: {
       labels: items.map(i => i.name),
       datasets: [{
-        data: items.map(i => n2(i.amount)),
+        data: items.map(i => n2(i.viewAmount)),
         backgroundColor: items.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]),
         borderColor: "#16315A",
         borderWidth: 2,
@@ -954,17 +1253,29 @@ function renderCatLevel(container, info){
   let note = "";
   if(overAll){
     note = `<div class="lvl-note err">⚠ Сумма процентов этого уровня больше 100% — уменьшите проценты.</div>`;
+  } else if(!hasRemainder && usedPct > 100 + 1e-9){
+    // На уровне нет контейнера-«остатка» (например, «Свободный остаток»),
+    // а проценты уже заняли ~100%, и сверху добавлена ещё и фиксированная
+    // сумма — вместе они не помещаются в бюджет уровня. Пропорционально
+    // урезаем (см. balanceKidsPure()), но пользователь должен это видеть.
+    note = `<div class="lvl-note err">⚠ Проценты и фиксированные суммы этого уровня вместе больше 100% основы (${pctFmt(usedPct)}) — суммы ниже пропорционально урезаны, чтобы уложиться в бюджет. Уменьшите проценты или фиксированную сумму.</div>`;
   } else if(!hasRemainder && kids.some(k=>k.kind==="pct") && usedPct < 100 - 1e-9){
     const rem = Math.max(0, base - usedPct/100*base);
     note = `<div class="lvl-note warn">Распределены не все средства: не распределено ≈ ${fmt(rem)} из ${fmt(base)}.</div>`;
+  }
+  // На уровне есть категория-исключение (расчёт от каждого пополнения отдельно) —
+  // её реальная сумма может не совпадать с «долей от основы уровня» ниже,
+  // поэтому суммы по строкам уровня не обязаны сходиться ровно в 100% от «Основы».
+  if(kids.some(k => k.baseException)){
+    note += `<div class="lvl-note warn">⚡ На этом уровне есть категория с расчётом «от каждого пополнения» — её сумма считается отдельно и может не совпадать с долей от «Основы» уровня.</div>`;
   }
   const rows = kids.map(node => {
     const isPct = node.kind === "pct";
     const tag = node.custom ? '<span class="tag gray">своя</span>' : "";
     // Пояснение, от чего считается значение
     const desc = isPct
-      ? `${pctFmt(node.value)} от ${info.baseShort}`
-      : `фикс ${fmt(node.value)} · от ${info.baseShort}`;
+      ? `${pctFmt(node.value)} от ${info.baseShort}${node.baseException ? " · считается от каждого пополнения" : ""}`
+      : `фикс ${fmt(node.value)} · от ${info.baseShort}${node.baseException ? " · с каждого пополнения" : ""}`;
     // Фикс-сумма: красная, если превышает основу уровня (доход за месяц) одна или в сумме
     const overFix = !isPct && (n2(node.value) > base || fixedSum > base);
     const valInput = isPct
@@ -995,6 +1306,21 @@ function renderCatLevel(container, info){
       ${note}
       ${rows}
     </div>`;
+}
+
+// Список категорий-исключений (kind:"pct") с переключателем «месяц / пополнение».
+// Показывает и базовые, и пользовательские процентные категории со всех уровней.
+function renderExceptionRows(root){
+  const nodes = flatten(root).filter(n => n.kind === "pct" || n.kind === "fixed");
+  if(!nodes.length) return `<div class="lock-note">Категорий пока нет.</div>`;
+  return nodes.map(n => `
+    <div class="set-row">
+      <div class="s-name">${mq(esc(n.name))}<small>${n.kind==="pct" ? pctFmt(n.value) : "фикс "+fmt(n.value)}${n.custom ? " · своя" : ""}</small></div>
+      <div class="seg" data-exc-seg="${n.uid}">
+        <button type="button" data-exc-val="0" class="${!n.baseException ? 'active' : ''}">Месяц</button>
+        <button type="button" data-exc-val="1" class="${n.baseException ? 'active' : ''}">Пополнение</button>
+      </div>
+    </div>`).join("");
 }
 
 function renderSettings(root){
@@ -1038,6 +1364,12 @@ function renderSettings(root){
         </div>
       </div>`}
     ${guard ? `<div class="card"><div class="lvl-note err">${guard}</div></div>` : ""}
+
+    <div class="card">
+      <h2>Расчёт процентов</h2>
+      <div class="section-note">По умолчанию и проценты, и фиксированные суммы считаются от общей суммы пополнений за месяц. Для отдельных категорий можно включить «Пополнение» — тогда сумма считается по каждому пополнению отдельно и складывается за месяц (например, «1% с каждой выплаты» или «фикс. сумма с каждой выплаты» вместо «от суммы месяца»). Пока дохода хватает на фиксированные категории — они используются полностью, без ограничений; появится лишь предупреждение, если на них уходит больше 70% дохода. А если дохода НЕ хватает даже на фикс-суммы целиком — используется не более 50% дохода, остальное распределяется по другим категориям, чтобы они не остались пустыми (см. сообщение на главной). Если доход месяца складывается из нескольких пополнений, доля по фикс-категориям распределяется равномерно по каждому из них.</div>
+      ${renderExceptionRows(root)}
+    </div>
 
     <div class="card">
       <h2>Категории</h2>
@@ -1345,10 +1677,16 @@ function bindEvents(){
   // --- Выбор месяца/года на главной (временный, не сохраняется в LocalStorage) ---
   document.getElementById("selMonth")?.addEventListener("change", e=>{
     selMonth = parseInt(e.target.value, 10) || null;
+    selIncomeChoice = null; // при смене месяца сбрасываем выбор конкретного пополнения
     render();
   });
   document.getElementById("selYear")?.addEventListener("change", e=>{
     selYear = parseInt(e.target.value, 10) || null;
+    selIncomeChoice = null;
+    render();
+  });
+  document.getElementById("selIncomeEntry")?.addEventListener("change", e=>{
+    selIncomeChoice = e.target.value;
     render();
   });
 
@@ -1361,10 +1699,11 @@ function bindEvents(){
   // --- Доходы: добавление ---
   document.getElementById("addIncomeBtn")?.addEventListener("click", ()=>{
     const date = document.getElementById("newDate").value;
-    const amount = parseFloat(document.getElementById("newAmount").value);
+    const rawAmount = parseFloat(document.getElementById("newAmount").value);
     const comment = document.getElementById("newComment").value.trim();
-    if(!date || isNaN(amount)) return;
-    state.incomes.push({date, amount, comment});
+    if(!date || isNaN(rawAmount)) return;
+    const amount = Math.max(0, rawAmount); // отрицательный доход не имеет смысла — как и другие суммы в приложении, не даём уйти в минус
+    state.incomes.push({id: freshUid(), date, amount, comment});
     save();
   });
   document.querySelectorAll("[data-del-income]").forEach(el=>{
@@ -1378,6 +1717,19 @@ function bindEvents(){
   document.querySelector("[data-close-debt]")?.addEventListener("click", ()=>{
     state.hideDebtNotice = true;
     save();
+  });
+
+  // --- Настройки: категории-исключения (расчёт % от каждого пополнения отдельно) ---
+  document.querySelectorAll("[data-exc-seg]").forEach(seg=>{
+    seg.querySelectorAll("button").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const uid = seg.dataset.excSeg;
+        const hit = findNode(state.tree, uid);
+        if(!hit) return;
+        hit.node.baseException = btn.dataset.excVal === "1";
+        save();
+      });
+    });
   });
 
   // --- Настройки: переключение тип/значение категории ---
@@ -1448,7 +1800,7 @@ function bindEvents(){
       }
     }
     parent.children = parent.children || [];
-    parent.children.push({ uid: freshUid(), kind: type==="pct"?"pct":"fixed", value: Math.max(0,val), name, custom: true });
+    parent.children.push({ uid: freshUid(), kind: type==="pct"?"pct":"fixed", value: Math.max(0,val), name, custom: true, baseException: false });
     save();
   });
 
@@ -1534,10 +1886,14 @@ function bindEvents(){
   });
   document.getElementById("importFile")?.addEventListener("change", (e)=>{
     const file = e.target.files[0];
-    const statusEl = document.getElementById("importStatus");
     if(!file) return;
     const reader = new FileReader();
     reader.onload = () => {
+      // #importStatus запрашиваем ЗАНОВО в каждой ветке, а не один раз в начале:
+      // успешный импорт вызывает save() -> render(), который полностью
+      // пересобирает DOM Настроек — ссылка, полученная ДО этого, становится
+      // «висячей» (узел уже удалён из документа), и текст в неё уходит в
+      // никуда, а пользователь не видит подтверждения импорта.
       try{
         const parsed = JSON.parse(reader.result);
         if(!parsed || !parsed.tree || !parsed.tree.kind){
@@ -1545,10 +1901,14 @@ function bindEvents(){
         }
         state = Object.assign(defaultState(), parsed);
         migrateTree(state.tree);
+        migrateIncomes(state.incomes);
         if(!state.salary) state.salary = 0;
+        selIncomeChoice = null;
         save();
+        const statusEl = document.getElementById("importStatus");
         if(statusEl) statusEl.textContent = "✓ Данные восстановлены из файла — идеальная копия состояния.";
       }catch(err){
+        const statusEl = document.getElementById("importStatus");
         if(statusEl){ statusEl.textContent = "⚠ Не удалось импортировать: " + err.message; }
       }
     };

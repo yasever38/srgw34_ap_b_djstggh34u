@@ -1,5 +1,5 @@
 /* Service Worker для offline-работы PWA «Бюджет» */
-const CACHE_NAME = "budget-v1";
+const CACHE_NAME = "budget-v2";
 
 // Основные файлы приложения, которые кэшируются при установке (app shell)
 const SHELL = [
@@ -26,26 +26,40 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-// Стратегия «cache-first»: сначала берём из кэша, при промахе — из сети
-// (включая CDN Chart.js, чтобы график работал и офлайн)
+// Навигация (сама страница index.html): «сеть сначала». Приложение будет
+// обновляться годами — если отдавать HTML из кэша навсегда (как раньше),
+// пользователь никогда не увидит новых версий, пока сам не почистит кэш.
+// Пока есть интернет — всегда берём свежую версию и обновляем кэш; офлайн —
+// откатываемся на последнюю сохранённую копию.
+// Остальные файлы (иконки, манифест, Chart.js с CDN) меняются редко —
+// для них оставляем «кэш сначала», экономим сеть.
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(event.request).then((response) => {
-        if (response && response.status === 200 && response.type === "basic" ||
-            (response && response.status === 200 && event.request.url.indexOf("cdn.jsdelivr.net") !== -1)) {
+
+  const isNavigation = event.request.mode === "navigate" || event.request.url.endsWith("/index.html");
+  if (isNavigation) {
+    event.respondWith(
+      fetch(event.request).then((response) => {
+        if (response && response.status === 200) {
           const copy = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
         }
         return response;
-      }).catch(() => {
-        // Полный офлайн без сети — отдаём главную страницу как fallback
-        if (event.request.mode === "navigate") {
-          return caches.match("./index.html");
+      }).catch(() => caches.match(event.request).then((cached) => cached || caches.match("./index.html")))
+    );
+    return;
+  }
+
+  event.respondWith(
+    caches.match(event.request).then((cached) => {
+      if (cached) return cached;
+      return fetch(event.request).then((response) => {
+        if (response && response.status === 200 && (response.type === "basic" || event.request.url.indexOf("cdn.jsdelivr.net") !== -1)) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
         }
-      });
+        return response;
+      }).catch(() => {});
     })
   );
 });
