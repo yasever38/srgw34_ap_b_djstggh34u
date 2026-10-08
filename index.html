@@ -378,28 +378,15 @@ function defaultState(){
     salary: 90000,            // текущая ЗП (100%)
     tree: defaultTree(),      // иерархия категорий
     incomes: [],              // история доходов: {id, date, amount, comment}
-    calCheck: {},             // отметки «Сделано» в календаре действий (ключ = дата|текст)
+    calCheck: {},             // отметки «Сделано» в календаре действий (ключ = id записи CALENDAR, см. migrateCalCheck())
     ui: { theme: "dark" },    // настройки UI (в текущем дизайне тема только тёмная)
   };
 }
 
-/* Дерево распределения по умолчанию (см. ТЗ):
-   ЗП(100%)
-   ├─ Благотворительность: 1% от ЗП
-   ├─ ИИС: фикс 27 350
-   ├─ ПДС: фикс 6 000
-   └─ Остаток (= 100% для уровня)
-      ├─ На жизнь: 70% от остатка
-      └─ Свободный остаток: остаток (всё, что не ушло выше) (=100%)
-         ├─ Подушка безопасности: 30%
-         └─ Агрессивные накопления: 70%
-   kind: root/ base/ pct / fixed
-   base-узел (контейнер): если есть value — берёт % от родителя; иначе — остаток.
-   baseException (только у kind:"pct"): false/не задано — процент считается от
-   общей суммы за месяц (по умолчанию); true — категория-исключение: процент
-   считается отдельно от КАЖДОГО пополнения месяца, суммы складываются
-   (см. computeTree()/calcAmounts()).
-*/
+/* Дерево по умолчанию: kind root/base/pct/fixed. base-узел — контейнер:
+   есть value → % от родителя, иначе — остаток. baseException (на pct/fixed) —
+   true: считается отдельно по каждому пополнению («Пополнение» в Настройках),
+   иначе — от суммы месяца («Месяц»). */
 let uidSeq = 1;
 function defaultTree(){
   return {
@@ -422,9 +409,7 @@ function defaultTree(){
 /* ---------- загрузка / сохранение в LocalStorage ---------- */
 let state = load();
 
-/* Миграция старых сохранений:
-   «Свободный остаток» стал контейнером-остатком (value: null) — он забирает
-   всё, что не раздали на уровне 2 (если раздали 60% → уходит 40%). */
+// Старое поле b6.value=30 -> null (контейнер-остаток).
 function migrateTree(t){
   if(!t) return;
   const hit = findNode(t, "b6");
@@ -432,12 +417,56 @@ function migrateTree(t){
   if(b6 && b6.kind === "base" && b6.value === 30) b6.value = null;
 }
 
-// Старые записи доходов создавались без id (id нужен, чтобы выбирать конкретное
-// пополнение на главной — индекс в массиве «плывёт» при удалении).
+// Старые доходы без id (id нужен для выбора пополнения на главной).
 function migrateIncomes(list){
   (list||[]).forEach(i => { if(i && !i.id) i.id = freshUid(); });
 }
 
+// Отметки календаря раньше ключевались по "дата|текст" — переносим на
+// постоянный id (см. CALENDAR). Вызывается после того, как CALENDAR уже
+// построен (не раньше — массив ещё не существует).
+function migrateCalCheck(st){
+  if(!st || !st.calCheck) return false;
+  let changed = false;
+  CALENDAR.forEach(item => {
+    const oldKey = item.date + "|" + item.what;
+    if(st.calCheck[oldKey] && !st.calCheck[item.id]){
+      st.calCheck[item.id] = st.calCheck[oldKey];
+      changed = true;
+    }
+  });
+  Object.keys(st.calCheck).forEach(k => {
+    if(/^\d{4}-\d{2}-\d{2}\|/.test(k)){ delete st.calCheck[k]; changed = true; }
+  });
+  return changed;
+}
+
+// Только для импорта (см. вызов ниже): отрицательные значения из вручную
+// отредактированного файла -> 0. Возвращает число исправлений, чтобы
+// обработчик импорта честно предупредил пользователя, а не промолчал.
+function sanitizeValues(st){
+  let fixedCount = 0;
+  const clamp = (v) => {
+    const c = Math.max(0, n2(v));
+    return c;
+  };
+  (function walk(n){
+    if(!n) return;
+    if(n.kind === "pct" || n.kind === "fixed"){
+      const c = clamp(n.value);
+      if(c !== n.value){ n.value = c; fixedCount++; }
+    }
+    (n.children||[]).forEach(walk);
+  })(st.tree);
+  (st.incomes||[]).forEach(i => {
+    if(!i) return;
+    const c = clamp(i.amount);
+    if(c !== i.amount){ i.amount = c; fixedCount++; }
+  });
+  return fixedCount;
+}
+
+// Намеренно без sanitizeValues() — обычные данные и так валидны (см. выше).
 function load(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -463,10 +492,7 @@ function cleanTree(n){
   return c;
 }
 
-// В state.tree после каждого рендера остаются ВЫЧИСЛЕННЫЕ поля
-// (amount, viewAmount, pctOfSalary, _depth, childBase, _income,
-// _fixedWarnings). В LocalStorage и в экспортируемый JSON они не попадают —
-// в хранилище кладётся чистое дерево.
+// Чистое дерево для LocalStorage/экспорта (без вычисленных полей).
 function snapState(){ return {...state, tree: cleanTree(state.tree)}; }
 function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(snapState())); render(); }
 
@@ -490,40 +516,25 @@ function mq(html){
 }
 
 /* ---------- РАСЧЁТ ДЕРЕВА ----------
-   Рекурсивно вычисляет суммы узлов. Возвращает корневой узел (state.tree)
-   с заполненными node.amount / node.pctOfSalary.
-   Основание расчёта (корень) — доход за выбранный месяц/год, либо одно
-   выбранное пополнение (см. getSelectedIncome()). Если записей нет — берётся
-   сохранённая СУММА (state.salary).
+   Основание — доход за месяц/выбранное пополнение (getSelectedIncome()),
+   или state.salary, если доходов ещё нет. node.amount — канонический расчёт
+   за месяц (читают Настройки), node.viewAmount — то, что видно на главной.
 
-   Категории-исключения (node.baseException === true на pct- ИЛИ fixed-узле,
-   см. defaultTree()): их сумма считается НЕ от общего основания, а отдельно
-   по каждому пополнению месяца и складывается — «сколько уходит в эту
-   категорию с каждой выплаты». Для этого прогоняется «теневой» расчёт
-   (calcAmounts) по каждому пополнению отдельно (как если бы оно было
-   единственным доходом месяца): сумма по ВСЕМ пополнениям месяца идёт в
-   канонический расчёт (node.amount, не зависит от выбора на главной — его
-   читают Настройки), а сумма по ОДНОМУ выбранному на главной пополнению
-   (если оно выбрано) — только в отображение (node.viewAmount).
+   Категории-исключения (baseException=true, режим «Пополнение» в Настройках)
+   считаются отдельно по каждому пополнению и складываются, а не от общей базы.
 
-   Защита фикс-сумм (действует ВСЕГДА — и на доход за месяц целиком, и на
-   расчёт по одному пополнению): фиксированные категории по своей природе не
-   масштабируются вместе с доходом. Основания НЕ ограничиваем, пока дохода
-   хватает — только предупреждаем, если уходит много:
-     • фикс-суммы контейнера ≤ основания (дохода хватает) — используются
-       ПОЛНОСТЬЮ, без урезания;
-       — если при этом они > 70% основания — просто предупреждение
-         («уходит больше 70% дохода»), расчёт не меняется;
-     • фикс-суммы > основания (дохода НЕ хватает даже на них целиком) —
-       вот тогда защита: урезаем РОВНО до 50% основания, остальное уходит
-       другим категориям, чтобы они не остались пустыми.
-   Оба события попадают в warnList для сообщения пользователю (разные по
-   смыслу — kind: "high" вместо ограничения и "shortfall" при урезании).
-   Если основание — не единая выплата, а несколько пополнений месяца:
-   и 70%-предупреждение, и 50%-урезание считаются от суммы месяца целиком,
-   а при просмотре одного пополнения агрегатный результат пропорционально
-   масштабируется на него (см. computeTree()) — поэтому доля (в т.ч. урезанные
-   50%) получается РАВНОМЕРНОЙ по каждой отдельной выплате. */
+   Защита «На жизнь»: если фикс-категории контейнера просят больше 70%
+   основания — используется не больше 50%, остальное уходит другим. На шаге
+   накопительного расчёта по пополнениям (entryCtx, см. computeTree()) порог
+   считается от накопленного итога месяца, а урезание — 50% именно от текущей
+   выплаты; недостающее переносится на следующие пополнения, а как только
+   накопленный итог становится комфортным — доплачивается остаток без
+   ограничения.
+
+   balanceKidsPure()/balanceKidsPureEntry() ниже: после фикс-категорий сумма
+   %/base-с-% детей всегда довыравнивается под бюджет контейнера (даже без
+   своего контейнера-остатка, напр. «Свободный остаток»). Категории-
+   исключения (overrides) в этом выравнивании не участвуют. */
 function collectExceptionUids(node, set){
   set = set || new Set();
   if((node.kind === "pct" || node.kind === "fixed") && node.baseException) set.add(node.uid);
@@ -531,12 +542,11 @@ function collectExceptionUids(node, set){
   return set;
 }
 
-// Чистый (без побочных эффектов) расчёт: заполняет out (Map uid -> сумма).
-// overrides — принудительные суммы для части pct/fixed-узлов (категории-исключения)
-// или null, если исключений нет. warnList — массив, куда добавляются события
-// урезания фикс-сумм (или null, если такие события в этом расчёте не нужно
-// собирать).
-function calcAmounts(node, base, overrides, out, warnList){
+// Чистый расчёт: заполняет out (Map uid -> сумма). overrides — принудительные
+// суммы категорий-исключений (или null). warnList — куда добавлять события
+// урезания фикс-сумм (или null). entryCtx — {priorMap, entryAmount} только
+// для шага накопительного расчёта (см. computeTree()); без него — обычный режим.
+function calcAmounts(node, base, overrides, out, warnList, entryCtx){
   if(node.kind === "pct"){
     const forced = overrides && Object.prototype.hasOwnProperty.call(overrides, node.uid);
     const amt = forced ? round2(overrides[node.uid]) : round2(base * (n2(node.value)/100));
@@ -552,12 +562,6 @@ function calcAmounts(node, base, overrides, out, warnList){
   const pctKids   = kids.filter(ch => ch.kind === "pct");
 
   let sumKids = 0;
-  // hasOverrideChild: среди детей есть категория-исключение (pct или fixed),
-  // либо фикс-суммы были урезаны/исключены защитой выше — в обоих случаях
-  // сумма детей МОЖЕТ заметно отличаться от «нормальной» доли (не на копейки),
-  // и копеечную балансировку ниже делать нельзя — иначе вся разница спишется
-  // на соседнюю категорию.
-  let hasOverrideChild = false;
 
   // --- фикс-категории считаем группой: нужно видеть их общую сумму сразу ---
   const overrideFixed = [], plainFixed = [];
@@ -569,74 +573,109 @@ function calcAmounts(node, base, overrides, out, warnList){
     const amt = round2(overrides[ch.uid]);
     out.set(ch.uid, amt);
     sumKids += amt;
-    hasOverrideChild = true;
   });
   if(plainFixed.length){
     const nominal = round2(plainFixed.reduce((s,ch) => s + n2(ch.value), 0));
-    if(nominal > baseAmt + 1e-9){
-      // Дохода не хватает даже на фикс-суммы целиком — урезаем РОВНО до 50%
-      // основания, остальное уходит другим категориям. При масштабировании
-      // на отдельные пополнения (computeTree()) это автоматически даёт ровно
-      // 50% от КАЖДОГО пополнения.
-      const cap = round2(baseAmt*0.5);
+    // Защита «На жизнь» — см. комментарий к calcAmounts() выше (режимы 1 и 2).
+    const comfortable = baseAmt > 0 && nominal <= round2(baseAmt*0.7) + 1e-9;
+    const idealTarget = baseAmt <= 0 ? 0 : (comfortable ? nominal : round2(baseAmt*0.5));
+    let target;
+    if(!entryCtx){
+      target = idealTarget;
+    } else {
+      const priorSum = plainFixed.reduce((s,ch) => s + n2(entryCtx.priorMap.get(ch.uid)), 0);
+      // Вклад именно этой выплаты в бюджет именно этого контейнера (на
+      // вложенных уровнях до него доходит только часть выплаты).
+      const priorBase = n2(entryCtx.priorMap.get(node.uid));
+      const entryDelta = Math.max(0, round2(baseAmt - priorBase));
+      // Резервируем долю соседних % категорий в этом вкладе — иначе фикс-
+      // категории могли бы забрать чужую долю и увести остаток в минус.
+      const isOverride = ch => overrides && Object.prototype.hasOwnProperty.call(overrides, ch.uid);
+      const siblingPct = pctKids.filter(ch => !isOverride(ch)).reduce((s,ch)=>s+n2(ch.value),0)
+        + kids.filter(ch => ch.kind==="base" && ch.value!=null && !isOverride(ch)).reduce((s,ch)=>s+n2(ch.value),0);
+      const fixedEntryDelta = Math.max(0, round2(entryDelta * (1 - siblingPct/100)));
+      const gap = Math.max(0, round2(idealTarget - priorSum));
+      // Потолок 50% — от ВСЕЙ выплаты (entryDelta), а не от fixedEntryDelta:
+      // idealTarget считается от полного baseAmt, и сумма потолков по всем
+      // пополнениям должна сходиться к idealTarget, а не к его части.
+      // fixedEntryDelta остаётся только как страховка ниже (от минуса).
+      const raw = comfortable ? gap : Math.min(gap, round2(entryDelta*0.5));
+      target = round2(priorSum + Math.min(raw, fixedEntryDelta));
+    }
+    if(target + 1e-9 < nominal){
       plainFixed.forEach(ch => {
-        const share = round2(cap * (n2(ch.value)/nominal));
+        const share = round2(target * (n2(ch.value)/nominal));
         out.set(ch.uid, share);
         sumKids += share;
       });
-      hasOverrideChild = true;
-      if(warnList) warnList.push({ containerUid: node.uid, names: plainFixed.map(c=>c.name), nominal, base: baseAmt, cap, kind: "shortfall" });
+      if(warnList) warnList.push({ containerUid: node.uid, names: plainFixed.map(c=>c.name), nominal, base: baseAmt, cap: target, kind: "shortfall", comfortOnly: nominal <= baseAmt + 1e-9 });
     } else {
-      // Дохода хватает — используем фикс-суммы ПОЛНОСТЬЮ, без урезания.
+      // Фикс-суммы в пределах комфортной зоны — используем их ПОЛНОСТЬЮ, без урезания.
       plainFixed.forEach(ch => {
         const amt = round2(n2(ch.value));
         out.set(ch.uid, amt);
         sumKids += amt;
       });
-      if(warnList && nominal > round2(baseAmt*0.7) + 1e-9){
-        // Просто предупреждение — расчёт НЕ меняется, дохода достаточно.
-        warnList.push({ containerUid: node.uid, names: plainFixed.map(c=>c.name), nominal, base: baseAmt, kind: "high" });
-      }
     }
   }
 
   // --- процентные категории ---
-  pctKids.forEach(ch => {
-    sumKids += calcAmounts(ch, baseAmt, overrides, out, warnList);
-    if(overrides && Object.prototype.hasOwnProperty.call(overrides, ch.uid)) hasOverrideChild = true;
-  });
+  pctKids.forEach(ch => { sumKids += calcAmounts(ch, baseAmt, overrides, out, warnList, entryCtx); });
 
   // base-дети с явным процентом
-  kids.forEach(ch => { if(ch.kind === "base" && ch.value != null) sumKids += calcAmounts(ch, baseAmt, overrides, out, warnList); });
-  // base-ребёнок без процента — получает ровно остаток (сумма всегда сходится,
-  // в том числе честно учитывает реальную сумму категорий-исключений и
-  // урезанных фикс-категорий)
+  kids.forEach(ch => { if(ch.kind === "base" && ch.value != null) sumKids += calcAmounts(ch, baseAmt, overrides, out, warnList, entryCtx); });
+  // base-ребёнок без процента — получает ровно остаток
   const remChild = kids.find(ch => ch.kind === "base" && ch.value == null);
   if(remChild){
     const rem = Math.max(0, round2(baseAmt - sumKids));
-    sumKids += calcAmounts(remChild, rem, overrides, out, warnList);
-  } else if(sumKids > 0 && !hasOverrideChild){
-    // Остаточного контейнера нет: докручиваем детей, чтобы их сумма в копейках
-    // РОВНО равнялась бюджету (иначе на 70/30 → 30/70 накапливается копеечная ошибка).
-    balanceKidsPure(node, baseAmt, sumKids, out);
+    sumKids += calcAmounts(remChild, rem, overrides, out, warnList, entryCtx);
+  }
+  // Довыравниваем %/base-с-% детей под бюджет контейнера (копейки округления,
+  // или контейнер без остатка — см. комментарий к calcAmounts() выше). На шаге
+  // накопительного расчёта — отдельная версия с защитой от минуса (см.
+  // balanceKidsPureEntry() ниже): категория-исключение в контейнере без
+  // остатка может расти непропорционально бюджету, и обычное урезание
+  // соседей могло бы на одном шаге дать им меньше,
+  // чем было на предыдущем — то есть отрицательную долю у этого пополнения.
+  if(sumKids > 0){
+    if(entryCtx) balanceKidsPureEntry(node, baseAmt, sumKids, out, overrides, entryCtx);
+    else balanceKidsPure(node, baseAmt, sumKids, out, overrides);
   }
   return baseAmt;
 }
 
-// Корректировка (чистая версия balanceKids): выравнивает сумму детей контейнера
-// РОВНО в target. Для копеечной погрешности округления (обычная ситуация —
-// например, 70%/30% от суммы в копейках) докручивает по кругу, как раньше.
-// Но если контейнер БЕЗ остаточного child'а (например, «Свободный остаток»)
-// оказался перегружен НЕ на копейки — скажем, пользователь добавил свою
-// фиксированную категорию поверх уже занятых 100% процентов на этом уровне —
-// копеечный цикл превратился бы в сотни тысяч итераций (зависание) и мог бы
-// увести суммы в минус. В этом случае вместо цикла пропорционально
-// масштабируем все «части» (% и base-с-процентом), чтобы их сумма точно
-// уложилась в бюджет уровня — быстро (O(1)) и никогда не уходя в минус.
-function balanceKidsPure(parent, target, sum, out){
+// Как balanceKidsPure(), но для шага накопительного расчёта: значение части
+// не опускается ниже предыдущего шага (иначе доля была бы отрицательной).
+function balanceKidsPureEntry(parent, target, sum, out, overrides, entryCtx){
   const diffK = Math.round(target*100) - Math.round(sum*100);
   if(diffK === 0) return;
-  const parts = (parent.children||[]).filter(ch => ch.kind==="pct" || (ch.kind==="base" && ch.value != null));
+  const parts = (parent.children||[]).filter(ch =>
+    (ch.kind==="pct" || (ch.kind==="base" && ch.value != null)) &&
+    !(overrides && Object.prototype.hasOwnProperty.call(overrides, ch.uid))
+  );
+  if(!parts.length) return;
+  const partsSum = parts.reduce((s,p) => s + n2(out.get(p.uid)), 0);
+  const otherSum = round2(sum - partsSum);
+  const partsTarget = Math.max(0, round2(target - otherSum));
+  const scale = partsSum > 0 ? partsTarget/partsSum : 0;
+  parts.forEach(p => {
+    const natural = round2(n2(out.get(p.uid)) * scale);
+    const prior = n2(entryCtx.priorMap.get(p.uid));
+    out.set(p.uid, Math.max(natural, prior));
+  });
+}
+
+// Выравнивает сумму детей контейнера ровно в target. Копеечная разница —
+// докручивает по кругу; большая (контейнер без остатка перегружен/недогружен)
+// — пропорционально масштабирует «части», без цикла (O(1), не уходя в минус).
+// overrides-категории (исключения) в «части» не входят — их трогать нельзя.
+function balanceKidsPure(parent, target, sum, out, overrides){
+  const diffK = Math.round(target*100) - Math.round(sum*100);
+  if(diffK === 0) return;
+  const parts = (parent.children||[]).filter(ch =>
+    (ch.kind==="pct" || (ch.kind==="base" && ch.value != null)) &&
+    !(overrides && Object.prototype.hasOwnProperty.call(overrides, ch.uid))
+  );
   if(!parts.length) return;
   if(Math.abs(diffK) <= 200){ // не больше ~2 ₽ — это копеечное округление
     const sign = diffK > 0 ? 1 : -1;
@@ -654,10 +693,8 @@ function balanceKidsPure(parent, target, sum, out){
   parts.forEach(p => out.set(p.uid, round2(n2(out.get(p.uid)) * scale)));
 }
 
-// Переносит рассчитанные суммы из Map в дерево. applyAmounts -> node.amount
-// (канонический, ВСЕГДА агрегированный за месяц расчёт — его читают
-// Настройки и все проверки корректности). applyViewAmounts -> node.viewAmount
-// (то, что реально показывается на главной — см. computeTree()).
+// applyAmounts -> node.amount (канонический, за месяц). applyViewAmounts ->
+// node.viewAmount (что видно на главной).
 function applyAmounts(node, map){
   node.amount = round2(n2(map.get(node.uid)));
   (node.children||[]).forEach(ch => applyAmounts(ch, map));
@@ -670,33 +707,28 @@ function applyViewAmounts(node, map){
 function computeTree(){
   const root = state.tree;
   const inc = getSelectedIncome();
-  // «Официальное» дерево (node.amount: проценты, контейнеры, фикс-категории
-  // в режиме «Месяц») ВСЕГДА считается от суммы за месяц целиком (или от
-  // сохранённой ЗП, если доходов ещё нет вовсе) — единственная база для
-  // расчёта и для проверок в Настройках, независимо от того, выбрано ли на
-  // главной какое-то одно пополнение. Иначе категории «Месяц» (например,
-  // ИИС/ПДС) при просмотре одного маленького пополнения вели бы себя так,
-  // будто это пополнение — весь доход месяца, и «съедали» бы его целиком —
-  // а заодно в Настройках ложно подсвечивались бы как «превышают основу».
+  // node.amount всегда считается от суммы за месяц целиком (или от state.salary,
+  // если доходов ещё нет) — независимо от того, что выбрано на главной.
   const monthBase = round2(n2(inc.selectedEntry ? inc.monthTotal : inc.total));
 
   const exceptionUids = collectExceptionUids(root);
-  // aggOverrides — сумма категорий-исключений по ВСЕМ пополнениям месяца
-  // (не зависит от выбора на главной) — идёт в канонический расчёт (amount).
-  // entryOverrides — сумма ТОЛЬКО по выбранному пополнению (если оно выбрано)
-  // — идёт только в отображение (viewAmount). Считаем обоими один проход по
-  // всем пополнениям месяца — это единственный источник правды. Защита
-  // фикс-сумм (см. calcAmounts()) в этом «теневом» проходе действует всегда,
-  // так как база здесь — всегда одно конкретное пополнение.
+  // Теневой расчёт каждого пополнения по отдельности (как единственный доход
+  // месяца) — для категорий-исключений и как основа накопительного расчёта ниже.
+  const entryShadows = inc.entries.map(e => {
+    const shadowMap = new Map();
+    const shadowWarn = [];
+    calcAmounts(root, round2(n2(e.amount)), null, shadowMap, shadowWarn);
+    return { entry: e, map: shadowMap, warn: shadowWarn };
+  });
+
+  // aggOverrides — сумма исключений по всем пополнениям (-> node.amount).
+  // entryOverrides — сумма только по выбранному пополнению (-> viewAmount).
   let aggOverrides = null, entryOverrides = null;
   const entryWarnings = [];
-  if(exceptionUids.size && inc.entries.length){
+  if(exceptionUids.size && entryShadows.length){
     aggOverrides = {};
     if(inc.selectedEntry) entryOverrides = {};
-    inc.entries.forEach(e => {
-      const shadow = new Map();
-      const warns = [];
-      calcAmounts(root, round2(n2(e.amount)), null, shadow, warns);
+    entryShadows.forEach(({entry: e, map: shadow, warn: warns}) => {
       warns.forEach(w => entryWarnings.push(Object.assign({ scope: "entry", entryId: e.id, entryDate: e.date, entryComment: e.comment || "" }, w)));
       exceptionUids.forEach(uid => {
         aggOverrides[uid] = round2(n2(aggOverrides[uid]) + n2(shadow.get(uid)));
@@ -707,59 +739,58 @@ function computeTree(){
     });
   }
 
-  // Основной (канонический) расчёт — всегда от месячной базы, категории-
-  // исключения — суммой по ВСЕМ пополнениям месяца (aggOverrides): это
-  // агрегированный план месяца, не зависящий от выбора на главной. Защита
-  // фикс-сумм действует и здесь: если ИИС/ПДС (режим «Месяц») в сумме больше
-  // половины дохода за месяц — урезаются до 50% (см. calcAmounts()). Кладём
-  // в node.amount — читают Настройки и все проверки корректности.
+  // Канонический расчёт месяца (node.amount, читают Настройки).
   const mainMap = new Map();
   const monthWarnings = [];
-  // Предупреждения о фикс-суммах собираем, только если в выбранном периоде
-  // реально ЕСТЬ пополнения (inc.entries.length) — иначе для пустого месяца
-  // (доход = 0, потому что записей ещё нет) выйдет обманчивое «фиксированные
-  // суммы больше дохода», хотя на деле это просто отсутствие данных, а не
-  // нехватка денег.
+  // Предупреждения собираем только если в месяце реально есть пополнения —
+  // иначе для пустого месяца (0 ₽) выйдет обманчивое «не хватает денег».
   calcAmounts(root, monthBase, aggOverrides, mainMap, inc.entries.length ? monthWarnings : null);
   applyAmounts(root, mainMap);
 
-  // Отображение на главной (node.viewAmount): если выбрано одно конкретное
-  // пополнение — это ЛУПА над уже посчитанным месячным деревом: обычные
-  // категории («Месяц») пропорционально масштабируются к сумме этого
-  // пополнения (честная раскладка месячного плана на конкретную выплату,
-  // суммы всегда сходятся — в том числе 50%-ное урезание фикс-сумм при
-  // масштабировании автоматически превращается в ровно 50% от КАЖДОГО
-  // отдельного пополнения), категории-исключения показывают именно свою
-  // сумму по ЭТОМУ пополнению (entryOverrides), а не аггрегат и не его
-  // масштабированную копию. Если выбрано «Итого за месяц» — viewAmount = amount.
+  // Отображение на главной для выбранного пополнения: накопительный расчёт
+  // по порядку добавления (не пропорциональное масштабирование — иначе уже
+  // показанные/переведённые суммы менялись бы задним числом при новых
+  // доходах): доля №N = водопад(сумма 1..N) − водопад(сумма 1..N-1). Сумма
+  // долей всегда точно равна месячному плану (mainMap). Категории-исключения
+  // в эту логику не входят — их доля берётся из entryOverrides отдельно.
   let viewMap = mainMap;
-  if(inc.selectedEntry && monthBase > 0){
-    const ratio = n2(inc.selectedEntry.amount) / monthBase;
-    viewMap = new Map(mainMap);
-    (function scaleView(n){
-      if(exceptionUids.has(n.uid)){
-        if(entryOverrides && Object.prototype.hasOwnProperty.call(entryOverrides, n.uid)){
-          viewMap.set(n.uid, round2(entryOverrides[n.uid]));
-        }
-      } else {
-        viewMap.set(n.uid, round2(n2(viewMap.get(n.uid)) * ratio));
+  let selectedStepWarnings = [];
+  if(inc.selectedEntry && entryShadows.length){
+    let cumTotal = 0;
+    let cumAggOverrides = exceptionUids.size ? {} : null;
+    let prevStepMap = new Map();
+    for(const {entry: e, map: shadow} of entryShadows){
+      cumTotal = round2(cumTotal + n2(e.amount));
+      if(cumAggOverrides){
+        exceptionUids.forEach(uid => { cumAggOverrides[uid] = round2(n2(cumAggOverrides[uid]) + n2(shadow.get(uid))); });
       }
-      (n.children||[]).forEach(scaleView);
-    })(root);
+      const stepMap = new Map();
+      const stepWarn = [];
+      calcAmounts(root, cumTotal, cumAggOverrides, stepMap, stepWarn, { priorMap: prevStepMap, entryAmount: n2(e.amount) });
+      if(e.id === inc.selectedEntry.id){
+        const deltaMap = new Map();
+        flatten(root).forEach(n => {
+          deltaMap.set(n.uid, round2(n2(stepMap.get(n.uid)) - n2(prevStepMap.get(n.uid))));
+        });
+        exceptionUids.forEach(uid => {
+          if(entryOverrides && Object.prototype.hasOwnProperty.call(entryOverrides, uid)) deltaMap.set(uid, round2(entryOverrides[uid]));
+        });
+        viewMap = deltaMap;
+        selectedStepWarnings = stepWarn.map(w => Object.assign({ scope: "entry", cumulative: true, entryId: e.id, entryDate: e.date, entryComment: e.comment || "" }, w));
+        break;
+      }
+      prevStepMap = stepMap;
+    }
   }
   applyViewAmounts(root, viewMap);
 
-  // Предупреждения: месячные (доход за месяц целиком меньше фикс-сумм)
-  // показываем всегда — это про «официальный» план и видно независимо от
-  // выбора на главной. По одному пополнению (для категорий-исключений) —
-  // только для того, что реально выбрано на главной.
+  // Месячные предупреждения — всегда; по пополнению — только для выбранного.
   const visibleEntryWarnings = inc.selectedEntry
-    ? entryWarnings.filter(w => w.entryId === inc.selectedEntry.id)
+    ? entryWarnings.filter(w => w.entryId === inc.selectedEntry.id).concat(selectedStepWarnings)
     : entryWarnings;
   const visibleWarnings = monthWarnings.map(w => Object.assign({ scope: "month" }, w)).concat(visibleEntryWarnings);
 
-  // Проценты для показа на главной — от того, что реально просматривается
-  // (месяц целиком либо одно пополнение), поэтому считаются от viewAmount.
+  // Проценты считаем от viewAmount (то, что реально просматривается).
   const viewRootAmt = n2(root.viewAmount);
   (function setPct(n){
     (n.children||[]).forEach(ch=>{ setPct(ch); });
@@ -781,10 +812,7 @@ let selYear = null;
 // иначе      — id конкретного пополнения
 let selIncomeChoice = null;
 
-// Месяц/год последней записи в доходах (или null, если записей нет).
-// Берём самый поздний период ПО ДАТЕ, а не последний добавленный в список:
-// записи могут добавляться вразнобой, и последний элемент массива не значит
-// самый свежий. После обновления страницы должен выбираться максимальный месяц/год.
+// Месяц/год самой поздней записи ПО ДАТЕ (не последней добавленной в массив).
 function lastIncomePeriod(){
   const inc = state.incomes;
   if(!inc.length) return null;
@@ -801,8 +829,7 @@ function lastIncomePeriod(){
   return best;
 }
 
-// Последняя ЗАПИСЬ по дате (а не последняя добавленная в массив),
-// чтобы подзаголовок совпадал с периодом, выбранным на главной.
+// Последняя запись по дате.
 function latestIncome(){
   let best = null;
   (state.incomes||[]).forEach(i => {
@@ -834,9 +861,7 @@ function incomeEntriesByPeriod(month, year){
   });
 }
 
-// Какое конкретно пополнение считать «основанием» для процентов (или null — берём сумму месяца).
-// По умолчанию всегда «Итого за месяц» — конкретное пополнение только по ручному выбору
-// в селекторе на главной (влияет и на предпросмотр, и на расчёт категорий-исключений).
+// Выбранное пополнение-основание (или null — сумма месяца).
 function resolveIncomeSelection(entries){
   if(selIncomeChoice === "__ALL__") return null; // пользователь явно выбрал «Итого за месяц»
   if(selIncomeChoice){
@@ -847,11 +872,7 @@ function resolveIncomeSelection(entries){
   return null;
 }
 
-// Актуальный выбранный период и сумма-основание для расчёта дерева.
-// total       — сумма, от которой считается 100% (либо сумма месяца, либо одно пополнение);
-// monthTotal  — сумма ВСЕХ пополнений месяца (для доп. блока «Итого за месяц»);
-// entries     — список пополнений месяца (для селектора);
-// selectedEntry — конкретное выбранное пополнение, если выбрано.
+// total — основание для расчёта (сумма месяца или одно пополнение).
 function getSelectedIncome(){
   const lp = lastIncomePeriod();
   if(!lp){ return { month: null, year: null, total: round2(state.salary), monthTotal: 0, entries: [], selectedEntry: null }; }
@@ -1016,22 +1037,14 @@ function renderHome(root){
     : (inc.month ? `Доход за ${MONTHS_NOM[inc.month].toLowerCase()} ${selY} г.` : "Доход не выбран");
   const chartCaption = inc.selectedEntry ? "Выбранное пополнение" : "Доход за месяц";
 
-  // Предупреждения о фикс-суммах (см. calcAmounts()/computeTree()):
-  // kind:"high" — дохода хватает, расчёт НЕ меняется, просто предупреждаем,
-  // что уходит больше 70%; kind:"shortfall" — дохода не хватает даже на
-  // фикс-суммы целиком, используется не более 50%, остальное — другим
-  // категориям. scope:"month" — про доход за месяц целиком (видно всегда);
-  // scope:"entry" — про конкретное пополнение при расчёте категории-
-  // исключения (видно только когда оно выбрано или в просмотре «Итого»).
+  // Предупреждения о фикс-суммах (см. calcAmounts()/computeTree()), коротко:
+  // какие категории урезаны, сколько реально использовано из настроенного.
+  // scope:"month" — доход за месяц целиком (видно всегда); scope:"entry" —
+  // конкретное пополнение (видно только когда оно выбрано или в «Итого»).
   const fixedWarnHTML = (root._fixedWarnings || []).map(w => {
     const list = `«${w.names.map(esc).join('», «')}»`;
-    const where = w.scope === "month" ? "дохода за месяц" : "этого пополнения";
-    if(w.kind === "high"){
-      const pct = w.base > 0 ? Math.round(w.nominal/w.base*1000)/10 : 0;
-      return `<div class="check-banner bad">⚠ На фиксированные категории ${list} уходит ${pct}% ${where} (${fmt(w.nominal)} из ${fmt(w.base)}) — это больше 70%.</div>`;
-    }
-    const prefix = w.scope === "entry" ? `Для расчёта категории-исключения (пополнение от ${esc(w.entryDate)}${w.entryComment ? " · "+esc(w.entryComment) : ""}): ` : "";
-    return `<div class="check-banner bad">⚠ ${prefix}Фиксированные категории ${list} (${fmt(w.nominal)}) больше ${where} (${fmt(w.base)}) — использовано не более 50% (${fmt(w.cap)}), остальное распределено по другим категориям.</div>`;
+    const prefix = w.scope === "entry" && !w.cumulative ? `${esc(w.entryDate)}: ` : "";
+    return `<div class="check-banner bad">⚠ ${prefix}${list}: использовано ${fmt(w.cap)} из ${fmt(w.nominal)} — остальное пошло на «На жизнь» и другое.</div>`;
   }).join("");
 
   // Дерево распределения: два столбца (название слева, значение справа).
@@ -1254,18 +1267,11 @@ function renderCatLevel(container, info){
   if(overAll){
     note = `<div class="lvl-note err">⚠ Сумма процентов этого уровня больше 100% — уменьшите проценты.</div>`;
   } else if(!hasRemainder && usedPct > 100 + 1e-9){
-    // На уровне нет контейнера-«остатка» (например, «Свободный остаток»),
-    // а проценты уже заняли ~100%, и сверху добавлена ещё и фиксированная
-    // сумма — вместе они не помещаются в бюджет уровня. Пропорционально
-    // урезаем (см. balanceKidsPure()), но пользователь должен это видеть.
     note = `<div class="lvl-note err">⚠ Проценты и фиксированные суммы этого уровня вместе больше 100% основы (${pctFmt(usedPct)}) — суммы ниже пропорционально урезаны, чтобы уложиться в бюджет. Уменьшите проценты или фиксированную сумму.</div>`;
   } else if(!hasRemainder && kids.some(k=>k.kind==="pct") && usedPct < 100 - 1e-9){
     const rem = Math.max(0, base - usedPct/100*base);
     note = `<div class="lvl-note warn">Распределены не все средства: не распределено ≈ ${fmt(rem)} из ${fmt(base)}.</div>`;
   }
-  // На уровне есть категория-исключение (расчёт от каждого пополнения отдельно) —
-  // её реальная сумма может не совпадать с «долей от основы уровня» ниже,
-  // поэтому суммы по строкам уровня не обязаны сходиться ровно в 100% от «Основы».
   if(kids.some(k => k.baseException)){
     note += `<div class="lvl-note warn">⚡ На этом уровне есть категория с расчётом «от каждого пополнения» — её сумма считается отдельно и может не совпадать с долей от «Основы» уровня.</div>`;
   }
@@ -1276,8 +1282,8 @@ function renderCatLevel(container, info){
     const desc = isPct
       ? `${pctFmt(node.value)} от ${info.baseShort}${node.baseException ? " · считается от каждого пополнения" : ""}`
       : `фикс ${fmt(node.value)} · от ${info.baseShort}${node.baseException ? " · с каждого пополнения" : ""}`;
-    // Фикс-сумма: красная, если превышает основу уровня (доход за месяц) одна или в сумме
-    const overFix = !isPct && (n2(node.value) > base || fixedSum > base);
+    // Красная подсветка — фикс-сумма(ы) выше порога 70% (см. calcAmounts()).
+    const overFix = !isPct && (n2(node.value) > round2(base*0.7) || fixedSum > round2(base*0.7));
     const valInput = isPct
       ? `<input type="number" class="cat-inp" data-set-value="${node.uid}" data-kind="pct" value="${n2(node.value)}" step="0.1" min="0"><span class="inp-sfx">%</span>
          <span class="amount">${fmt(node.amount)}</span>`
@@ -1367,7 +1373,7 @@ function renderSettings(root){
 
     <div class="card">
       <h2>Расчёт процентов</h2>
-      <div class="section-note">По умолчанию и проценты, и фиксированные суммы считаются от общей суммы пополнений за месяц. Для отдельных категорий можно включить «Пополнение» — тогда сумма считается по каждому пополнению отдельно и складывается за месяц (например, «1% с каждой выплаты» или «фикс. сумма с каждой выплаты» вместо «от суммы месяца»). Пока дохода хватает на фиксированные категории — они используются полностью, без ограничений; появится лишь предупреждение, если на них уходит больше 70% дохода. А если дохода НЕ хватает даже на фикс-суммы целиком — используется не более 50% дохода, остальное распределяется по другим категориям, чтобы они не остались пустыми (см. сообщение на главной). Если доход месяца складывается из нескольких пополнений, доля по фикс-категориям распределяется равномерно по каждому из них.</div>
+      <div class="section-note">По умолчанию и проценты, и фиксированные суммы считаются от общей суммы пополнений за месяц. Для отдельных категорий можно включить «Пополнение» — тогда сумма считается по каждому пополнению отдельно и складывается за месяц (например, «1% с каждой выплаты» или «фикс. сумма с каждой выплаты» вместо «от суммы месяца»). Если фиксированные категории в сумме больше 70% основы — используется не больше 50%, остальное уходит другим категориям, чтобы «На жизнь» не осталось почти без денег (см. сообщение на главной). Если доход месяца — несколько пополнений: это правило применяется к КАЖДОЙ выплате отдельно (не больше 50% именно от неё), а недостающее доплачивается следующими выплатами — так одна выплата не отдаёт в фикс-категории больше половины себя, а уже показанные (и, как правило, уже переведённые) суммы предыдущих пополнений не пересчитываются при добавлении новых доходов за тот же месяц.</div>
       ${renderExceptionRows(root)}
     </div>
 
@@ -1429,6 +1435,7 @@ const SPRAVKA = [
     type: "kv",
     rows: [
       ["Минимальный срок", "Открыт в 2026 → 5 лет → разблокирован в 2031. Счёт не переоткрывать: для счетов 2027 года срок уже 6 лет и дальше растёт до 10."],
+      ["До трёх счетов одновременно", "В отличие от старых типов ИИС, по ИИС-3 можно одновременно держать до трёх счетов (у одного или разных брокеров). Лимит вычета 400 000 ₽/год и лимит освобождения прибыли (30 млн ₽) — общие на все ваши счета ИИС-3 вместе, а не по 400 000/30 млн на каждый."],
       ["Две льготы сразу", "Типов А и Б у ИИС-3 нет. Вычет на взносы (13% от 400 000 ₽) и освобождение прибыли от НДФЛ (лимит 30 млн ₽) работают одновременно."],
       ["Лимит 400 000 ₽", "Это общий котёл на ИИС-3 + ПДС + НПО, а не по 400 000 на каждый."],
       ["Вычет ограничен вашим НДФЛ", "Вернуть можно не больше, чем удержали за год."],
@@ -1441,12 +1448,15 @@ const SPRAVKA = [
     type: "kv",
     rows: [
       ["Срок договора", "15 лет с даты заключения, либо возраст 55 лет (ж) / 60 лет (м)."],
-      ["Софинансирование — 10 лет", "Считается от первого взноса. Договор 2027 года → выплаты за 2027–2036."],
+      ["Софинансирование — 10 лет", "Считается от ГОДА первого взноса (не от точной даты). Договор, открытый в 2026 году (даже в конце года) → 2026 — 1-й из 10 лет, выплаты за 2026–2035."],
       ["Коэффициент", "Доход до 80 тыс./мес → 1:1. От 80 до 150 тыс. → 1:2. Свыше 150 тыс. → 1:4. Потолок всегда 36 000 ₽ в год."],
       ["Минимум для права", "2 000 ₽ за год. Даже при низком доходе ПДС имеет смысл."],
       ["Главная ловушка", "Обращение за выплатой по любому договору ПДС лишает права на софинансирование по всем счетам — и нынешним, и будущим."],
       ["Выкупная сумма", "При досрочном расторжении НПФ вправе применить понижающие коэффициенты. Этот раздел договора читайте до подписания."],
       ["Гарантия", "Взносы застрахованы на 2,8 млн ₽ — вдвое больше банковского лимита."],
+      ["Новое (2026): срок на вывод софинансирования", "Для договоров, заключённых после вступления нормы в силу, минимальный срок, после которого можно забрать именно гос-доплату без потерь, увеличен с 1 года до 5 лет. Источники называют разную точную дату вступления (называют 1 сентября 2026, но решение могло ещё дорабатываться) — уточните у своего НПФ перед подписанием, относится ли это к вашему договору."],
+      ["Новое (2026): досрочное расторжение", "Для договоров, заключённых в 2024–2026 гг., расторжение раньше 5 лет может потребовать вернуть уже полученный вычет по требованию ФНС — отдельно от обычной потери самого софинансирования."],
+      ["Новое (2026): вычет на взносы в пользу ребёнка", "Отдельный семейный вычет (не вместо личного лимита 400 000 ₽, а ДОПОЛНИТЕЛЬНО к нему): до 500 000 ₽/год на взносы в пользу ребёнка до 18 лет (до 24 — при очной учёбе) на каждого родителя, то есть до 1 000 000 ₽ и до 220 000 ₽ возврата на семью, если участвуют оба родителя."],
     ]
   },
   {
@@ -1485,38 +1495,50 @@ const SPRAVKA = [
   },
 ];
 
-// --- Календарь действий ---
+// --- Календарь действий --- {id, date, type, what, details}. id постоянный
+// (отметки «Сделано» хранятся по нему) — дату/текст менять можно, id нельзя.
 const CALENDAR = [
-  ["2026-08-15","Подготовка","Завести личный кабинет налогоплательщика","nalog.gov.ru, вход через Госуслуги. Без него вычет получить нельзя"],
-  ["2026-08-15","Подготовка","Проверить ИИС-3 у брокера","Есть ли комиссия при нулевом остатке; не закроют ли неактивный счёт. Счёт НЕ переоткрывать — потеряете год срока"],
-  ["2026-12-01","Подготовка","Выбрать НПФ для ПДС","Смотреть: доходность 2024-2025, комиссии, раздел договора о ВЫКУПНОЙ СУММЕ и понижающих коэффициентах"],
-  ["2026-12-20","Подготовка","НЕ вносить деньги в ПДС в 2026 году","Взнос в 2026 сожжёт один из 10 лет софинансирования (минус ~35 000 ₽)"],
-  ["2026-12-31","Подготовка","Закрыть кредит","Приоритет №1 до старта плана"],
-  ["2026-12-31","Подготовка","Проверить подушку безопасности","3-6 месячных расходов на накопительном счёте. Без неё стартовать нельзя: деньги запираются на 5 и 15 лет"],
-  ["2027-01-10","Ключевая дата","Заключить договор ПДС + первый взнос","Паспорт, СНИЛС, ИНН, Госуслуги. Первый взнос 6 000 ₽. С этой даты пойдут 15 лет договора"],
-  ["2027-01-10","Ключевая дата","Настроить 3 автоплатежа на дату «зарплата + 1 день»","ПДС 6 000 ₽ / ИИС-3 27 350 ₽ / накопительный счёт 4 400 ₽"],
-  ["2027-01-15","Подготовка","Уточнить в НПФ и у брокера про упрощённый вычет","Передают ли они данные в ФНС. Если нет — придётся подавать 3-НДФЛ вручную"],
+  { id:"prep-nalog-kabinet", date:"2026-10-08", type:"Подготовка", what:"Завести личный кабинет налогоплательщика", details:"nalog.gov.ru, вход через Госуслуги. Без него вычет получить нельзя" },
+  { id:"prep-iis-check", date:"2026-10-08", type:"Подготовка", what:"Проверить ИИС-3 у брокера", details:"Счёт уже открыт в 2026 году — проверьте комиссию при нулевом остатке и не закроют ли счёт при долгом бездействии. Счёт НЕ переоткрывать — потеряете срок" },
+  { id:"prep-npf-choice", date:"2026-10-08", type:"Подготовка", what:"Выбрать НПФ для ПДС", details:"Смотреть: доходность 2024–2025, комиссии, раздел договора о ВЫКУПНОЙ СУММЕ и понижающих коэффициентах, а также новый срок возврата софинансирования (см. Справку). Если за 2 дня не успеете — подпишите чуть позже, план под это не ломается" },
+  { id:"prep-cushion-risk", date:"2026-10-08", type:"Подготовка", what:"Подушка безопасности пока неполная — осознанный риск", details:"Целевая сумма — 3-6 месячных расходов, вы сами задаёте её в Настройках. Пока резерв неполный, досрочное закрытие ИИС-3/ПДС из-за непредвиденной траты обойдётся дороже года без вычета — приложение само откладывает долю в подушку каждый месяц, старайтесь не трогать её на другие цели" },
+  { id:"key-pds-contract", date:"2026-10-10", type:"Ключевая дата", what:"Заключить договор ПДС + первый взнос", details:"Паспорт, СНИЛС, ИНН, Госуслуги. Первый взнос 6 000 ₽. С этой даты пойдут 15 лет договора. 2026 становится 1-м из 10 лет софинансирования — переносить старт на январь не нужно" },
+  { id:"key-autopay-setup", date:"2026-10-10", type:"Ключевая дата", what:"Настроить 3 автоплатежа на дату «зарплата + 1 день»", details:"ПДС 6 000 ₽ / ИИС-3 27 350 ₽ / накопительный счёт 4 400 ₽" },
+  { id:"prep-simplified-vychet", date:"2026-10-15", type:"Подготовка", what:"Уточнить в НПФ и у брокера про упрощённый вычет", details:"Передают ли они данные в ФНС. Если нет — придётся подавать 3-НДФЛ вручную" },
 ];
 
-// ежегодный цикл генерируется программно из файла «Календарь действий»
+// Ежегодный цикл. Старт — октябрь 2026, 2026 год неполный (окт-дек).
+// id записей строятся от года (annual-vychet-2027 и т.п.) — стабильны.
 (function buildAnnualCalendar(){
-  for(let y = 2028; y <= 2041; y++){
-    const py = y - 1;
-    CALENDAR.push([`${y}-03-20`,"Ежегодно",`ЛК ФНС: подписать заявление на вычет за ${py} г.`,"Предзаполненное заявление формируется до 20 марта. Вписать БИК и номер счёта (не карты), подписать. Само не отправится — 52 000 ₽"]);
-    CALENDAR.push([`${y}-04-30`,"Ежегодно",`Если заявления в ЛК не было — подать 3-НДФЛ за ${py} г.`,"Нужны: справка брокера о зачислении на ИИС + справка НПФ о взносах. Дедлайна нет, право живёт 3 года"]);
-    if(y <= 2037) CALENDAR.push([`${y}-08-01`,"Ежегодно",`Проверить поступление софинансирования за ${py} г.`,"Приходит автоматически до 1 августа, заявление не нужно. Смотреть в ЛК НПФ — 36 000 ₽"]);
-    CALENDAR.push([`${y}-12-20`,"Ежегодно",`Сверка взносов за ${y} год`,"ИИС + ПДС должно быть ровно 400 000 ₽. Не хватает — доплатить до 25 декабря. Больше класть смысла нет"]);
+  CALENDAR.push({ id:"annual-check-2026", date:"2026-12-20", type:"Подготовка", what:"Сверка взносов за 2026 год (неполный год)", details:"Первый год — только октябрь-декабрь (3 месяца). ИИС+ПДС ≈ 100 050 ₽ — это нормально, годовой лимит 400 000 ₽ на неполный год не распространяется" });
+
+  for(let y = 2027; y <= 2041; y++){
+    const py = y - 1; // год взносов/контракта, за который в году y подаётся вычет
+    const isFirstVychet = py === 2026;
+    const isLastVychet = y === 2041;
+    let vychetNote = isFirstVychet
+      ? "Предзаполненное заявление формируется до 20 марта. Вписать БИК и номер счёта (не карту), подписать. Само не отправится — за неполный год примерно 13 000 ₽ (взносы ≈100 050 ₽)"
+      : "Предзаполненное заявление формируется до 20 марта. Вписать БИК и номер счёта (не карту), подписать. Само не отправится — 52 000 ₽";
+    if(isLastVychet) vychetNote += ". ПОСЛЕДНИЙ вычет по этому плану: дальше только если продолжаете пополнять ИИС";
+    CALENDAR.push({ id:`annual-vychet-${y}`, date:`${y}-03-20`, type:"Ежегодно", what:`ЛК ФНС: подписать заявление на вычет за ${py} г.`, details: vychetNote });
+    CALENDAR.push({ id:`annual-3ndfl-${y}`, date:`${y}-04-30`, type:"Ежегодно", what:`Если заявления в ЛК не было — подать 3-НДФЛ за ${py} г.`, details:"Нужны: справка брокера о зачислении на ИИС + справка НПФ о взносах. Дедлайна нет, право живёт 3 года" });
+    if(y >= 2027 && y <= 2036){
+      const helpAmt = y === 2027 ? "9 000 ₽ (неполный год)" : "36 000 ₽";
+      CALENDAR.push({ id:`annual-help-${y}`, date:`${y}-08-01`, type:"Ежегодно", what:`Проверить поступление софинансирования за ${y-1} г.`, details:`Приходит автоматически до 1 августа, заявление не нужно. Смотреть в ЛК НПФ — ${helpAmt}` });
+    }
+    if(y <= 2040) CALENDAR.push({ id:`annual-check-${y}`, date:`${y}-12-20`, type:"Ежегодно", what:`Сверка взносов за ${y} год`, details:"ИИС + ПДС должно быть ровно 400 000 ₽. Не хватает — доплатить до 25 декабря. Больше класть смысла нет" });
   }
   // особые ключевые даты
-  CALENDAR.push(["2031-12-31","Ключевая дата","ИИС-3 отработал 5 лет","Льгота заработана: прибыль освобождена от НДФЛ (лимит 30 млн ₽). Счёт НЕ закрывать — ведите дальше"]);
-  CALENDAR.push(["2036-12-20","Ключевая дата","Последний взнос в ПДС","За 2036 год выбраны 72 000 ₽. Софинансирование за 10 лет получено полностью"]);
-  CALENDAR.push(["2037-01-10","Ключевая дата","Переключить автоплатежи","ПДС — отключить. ИИС-3 — поднять с 27 350 до 33 350 ₽/мес (400 200 ₽/год)"]);
-  CALENDAR.push(["2037-08-01","Ключевая дата","Последнее софинансирование (за 2036 г.)","Итого получено 360 000 ₽. Дальше господдержки не будет"]);
-  CALENDAR.push(["2042-01-10","Ключевая дата","15 лет договору ПДС — подать заявление на выплату","Обратиться в НПФ. Единовременно или ежемесячными выплатами — зависит от суммы и правил фонда"]);
-  CALENDAR.push(["2042-03-20","Ежегодно","ЛК ФНС: подписать заявление на вычет за 2041 г.","ПОСЛЕДНИЙ вычет по этому плану: дальше только если продолжаете пополнять ИИС"]);
-  CALENDAR.push(["2042-04-30","Ежегодно","Если заявления в ЛК не было — подать 3-НДФЛ за 2041 г.","Нужны: справка брокера о зачислении на ИИС + справка НПФ о взносах. Дедлайна нет, право живёт 3 года"]);
-  CALENDAR.push(["2044-12-31","Ключевая дата","Крайний срок заявить вычет за 2041 год","Право на вычет действует 3 года. Пропущенный год можно добрать задним числом"]);
+  CALENDAR.push({ id:"key-iis-5years", date:"2031-12-31", type:"Ключевая дата", what:"ИИС-3 отработал 5 лет", details:"Льгота заработана: прибыль освобождена от НДФЛ (лимит 30 млн ₽). Счёт НЕ закрывать — ведите дальше" });
+  CALENDAR.push({ id:"key-pds-last-contribution", date:"2035-12-20", type:"Ключевая дата", what:"Последний взнос в ПДС", details:"За 2035 год выбраны 72 000 ₽. Софинансирование за 10 лет получено полностью" });
+  CALENDAR.push({ id:"key-switch-autopay", date:"2036-01-10", type:"Ключевая дата", what:"Переключить автоплатежи", details:"ПДС — отключить. ИИС-3 — поднять с 27 350 до 33 350 ₽/мес (400 200 ₽/год)" });
+  CALENDAR.push({ id:"key-last-cofinancing", date:"2036-08-01", type:"Ключевая дата", what:"Последнее софинансирование (за 2035 г.)", details:"Итого получено 333 000 ₽ (с учётом неполного 2026 года). Дальше господдержки не будет" });
+  CALENDAR.push({ id:"key-pds-payout", date:"2041-10-10", type:"Ключевая дата", what:"15 лет договору ПДС — подать заявление на выплату", details:"Обратиться в НПФ. Единовременно или ежемесячными выплатами — зависит от суммы и правил фонда. Точная дата — от даты заключения договора, не от календарного года" });
+  CALENDAR.push({ id:"key-vychet-deadline", date:"2043-12-31", type:"Ключевая дата", what:"Крайний срок заявить вычет за 2040 год", details:"Право на вычет действует 3 года. Пропущенный год можно добрать задним числом" });
 })();
+
+// Здесь (не у load()) — CALENDAR уже построен.
+if(migrateCalCheck(state)) save();
 
 const MONTHS_RU = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
 function ruDate(iso){
@@ -1533,13 +1555,11 @@ function renderInfo(){
     return `<div class="card"><h2 class="info-section-title">${esc(s.title)}</h2>${rows}</div>`;
   }).join("");
 
-  // Календарь действий
-  const sorted = CALENDAR.slice().sort((a,b)=>a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]));
+  const sorted = CALENDAR.slice().sort((a,b)=>a.date.localeCompare(b.date) || a.type.localeCompare(b.type));
   const today = new Date().toISOString().slice(0,10);
   const calHTML = sorted.map((item) => {
-    const [date, type, what, details] = item;
-    const key = date + "|" + what;
-    const done = !!state.calCheck[key];
+    const { id, date, type, what, details } = item;
+    const done = !!state.calCheck[id];
     const typeCls = type === "Ключевая дата" ? "key" : type === "Ежегодно" ? "year" : "podg";
     const expired = date < today && !done;
     return `
@@ -1547,7 +1567,7 @@ function renderInfo(){
         <span class="cal-date">${ruDate(date)}</span>
         <span class="cal-type ${typeCls}">${esc(type)}</span>
         <div class="cal-check ${done?'done':''}">
-          <input type="checkbox" data-cal-check="${key}" ${done?"checked":""}>
+          <input type="checkbox" data-cal-check="${esc(id)}" ${done?"checked":""}>
           <div class="cal-body">
             <div class="w">${esc(what)}</div>
             <div class="d">${esc(details||"")}</div>
@@ -1574,7 +1594,7 @@ function renderInfo(){
     <div style="height:10px;"></div>
     <div class="card">
       <h2>Долгосрок (15 лет)</h2>
-      <div class="section-note">Помесячный график взносов, вычетов и господдержки до 2042 года. Источник — лист «Долгосрок (15 лет)».</div>
+      <div class="section-note">Помесячный график взносов, вычетов и господдержки до 2041 года (старт — октябрь 2026, первый год неполный). Источник — лист «Долгосрок (15 лет)».</div>
     </div>
     ${dolgHTML}
     <div style="height:10px;"></div>
@@ -1586,20 +1606,22 @@ function renderInfo(){
 }
 
 function buildDolgrosok(){
-  // помесячные данные 2027–2041
+  // помесячные данные 2026–2040 (15 календарных лет взносов; старт — октябрь
+  // 2026, поэтому 2026 — неполный год: взносы только за окт-дек).
   const years = [];
-  for(let y = 2027; y <= 2041; y++){
+  for(let y = 2026; y <= 2040; y++){
     const rows = [];
     for(let m = 1; m <= 12; m++){
-      const IIS = y <= 2036 ? 27350 : 33350;
-      const PDS = y <= 2036 ? 6000 : 0;
-      const help = (y>=2028 && y<=2037 && m===8) ? 36000 : 0;      // софинансирование за прошлый год — в августе
-      const vychet = (y>=2028 && y<=2041 && m===4) ? 52000 : 0;    // возврат НДФЛ — в апреле
+      const active = y !== 2026 || m >= 10; // до октября 2026 плана ещё не было
+      const IIS = !active ? 0 : (y <= 2035 ? 27350 : 33350);
+      const PDS = !active ? 0 : (y <= 2035 ? 6000 : 0);
+      const help = (y>=2027 && y<=2036 && m===8) ? (y===2027 ? 9000 : 36000) : 0; // софинансирование за прошлый год — в августе
+      const vychet = (y>=2027 && y<=2040 && m===4) ? (y===2027 ? 13007 : 52000) : 0; // возврат НДФЛ — в апреле
       let note = "";
-      if(m===12 && y<=2041) note = ">>> 20 декабря: сверить, что взносы ИИС+ПДС за год = 400 000 ₽";
-      if(y===2028 && m===4) note = "Возврат НДФЛ за 2027 г. (13% от 400 000 ₽)";
-      else if(y>2028 && m===4) note = `Возврат НДФЛ за ${y-1} г. (13% от 400 000 ₽)`;
-      if(m===8 && help) note = `Софинансирование за ${y-1} г. (взнос 72 000 ₽ × коэф. 1:2)`;
+      if(m===12 && y<=2040) note = ">>> 20 декабря: сверить, что взносы ИИС+ПДС за год = 400 000 ₽" + (y===2026 ? " (за неполный год — ≈100 050 ₽, это нормально)" : "");
+      if(y===2027 && m===4) note = "Возврат НДФЛ за 2026 г. (13% от ≈100 050 ₽ — неполный год)";
+      else if(y>2027 && m===4) note = `Возврат НДФЛ за ${y-1} г. (13% от 400 000 ₽)`;
+      if(m===8 && help) note = `Софинансирование за ${y-1} г. (взнос ${y===2027 ? "18 000" : "72 000"} ₽ × коэф. 1:2)`;
       rows.push({y, m, IIS, PDS, help, vychet, note});
     }
     years.push({ y, rows });
@@ -1638,17 +1660,18 @@ function buildDolgrosok(){
 function renderDolgConditions(){
   const C = [
     ["Доход","100 000 ₽/мес (1,2 млн ₽/год) → ставка НДФЛ 13%"],
-    ["Коэффициент софинансирования ПДС","Доход 80–150 тыс. ₽/мес → 1:2. Взнос 72 000 ₽ → господдержка 36 000 ₽"],
-    ["Срок софинансирования","10 лет с первого взноса: взносы 2027–2036, выплаты 2028–2037"],
-    ["Договор ПДС","Заключён в январе 2027 → 15 лет → деньги доступны с января 2042"],
+    ["Коэффициент софинансирования ПДС","Доход 80–150 тыс. ₽/мес → 1:2. Полный взнос 72 000 ₽/год → господдержка 36 000 ₽"],
+    ["Срок софинансирования","10 лет с ГОДА первого взноса: взносы 2026 (неполный)–2035, выплаты 2027–2036"],
+    ["Договор ПДС","Заключён в октябре 2026 → 15 лет → деньги доступны с октября 2041"],
     ["ИИС-3","Открыт в 2026 → минимальный срок 5 лет → разблокирован в 2031, счёт ведётся дальше"],
-    ["Лимит вычета","400 000 ₽/год суммарно на ИИС-3 + ПДС. Возврат 13% = 52 000 ₽/год"],
+    ["Лимит вычета","400 000 ₽/год суммарно на ИИС-3 + ПДС. Возврат 13% = 52 000 ₽/год (при ставке НДФЛ 15% — до 60 000 ₽/год)"],
     ["Внимание: переплата","27 350 + 6 000 = 33 350 ₽/мес = 400 200 ₽/год. Лишние 200 ₽ вычета не дают"],
     ["Вторая льгота ИИС-3","При закрытии после 5 лет вся прибыль освобождается от НДФЛ (лимит 30 млн ₽)"],
+    ["2026 год — неполный","Взносы только за октябрь-декабрь: ИИС+ПДС ≈100 050 ₽, вычет за него ≈13 007 ₽, софинансирование ≈9 000 ₽ — первый год просто короче остальных, лимит 400 000 ₽ не теряется"],
     ["Инвестиционный доход","НЕ УЧТЁН. Таблица показывает только взносы, вычеты и господдержку"],
-    ["Софинансирование","Приходит автоматически, заявление не нужно"],
+    ["Софинансирование","Приходит автоматически, заявление не нужно. С 2026 года для новых договоров минимальный срок на вывод именно этой гос-доплаты без потерь — 5 лет (раньше был 1 год, см. Справку)"],
     ["Вычет","Не автоматически: до 20 марта в ЛК ФНС появляется предзаполненное заявление, его надо подписать"],
-    ["Итог за 15 лет","Свои средства 6 003 000 ₽ + от государства 1 088 000 ₽ = 7 091 000 ₽ (7 143 000 ₽ с учётом последнего вычета)"],
+    ["Итог за 15 лет","Свои средства 5 702 850 ₽ + от государства 1 022 007 ₽ = 6 724 857 ₽ (6 776 857 ₽ с учётом последнего вычета за 2040 год)"],
   ];
   return C.map(r=>`<div class="kv"><div class="k">${esc(r[0])}</div><div class="v">${esc(r[1])}</div></div>`).join("");
 }
@@ -1889,11 +1912,8 @@ function bindEvents(){
     if(!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      // #importStatus запрашиваем ЗАНОВО в каждой ветке, а не один раз в начале:
-      // успешный импорт вызывает save() -> render(), который полностью
-      // пересобирает DOM Настроек — ссылка, полученная ДО этого, становится
-      // «висячей» (узел уже удалён из документа), и текст в неё уходит в
-      // никуда, а пользователь не видит подтверждения импорта.
+      // #importStatus запрашиваем заново в каждой ветке: save() ниже
+      // пересобирает DOM, старая ссылка на элемент станет «висячей».
       try{
         const parsed = JSON.parse(reader.result);
         if(!parsed || !parsed.tree || !parsed.tree.kind){
@@ -1902,11 +1922,16 @@ function bindEvents(){
         state = Object.assign(defaultState(), parsed);
         migrateTree(state.tree);
         migrateIncomes(state.incomes);
+        const fixedCount = sanitizeValues(state);
         if(!state.salary) state.salary = 0;
         selIncomeChoice = null;
         save();
         const statusEl = document.getElementById("importStatus");
-        if(statusEl) statusEl.textContent = "✓ Данные восстановлены из файла — идеальная копия состояния.";
+        if(statusEl){
+          statusEl.textContent = fixedCount > 0
+            ? `⚠ Импортировано, но ${fixedCount} ${fixedCount===1?"значение было отрицательным":"значения/значений были отрицательными"} — приведено к 0. Если это не ожидалось (например, опечатка при ручной правке файла), проверьте исходный JSON.`
+            : "✓ Данные восстановлены из файла — идеальная копия состояния.";
+        }
       }catch(err){
         const statusEl = document.getElementById("importStatus");
         if(statusEl){ statusEl.textContent = "⚠ Не удалось импортировать: " + err.message; }
