@@ -949,6 +949,18 @@ function containerByLevel(levelId){
   return { parent: p ? p.node : state.tree, isBase: L.isBase };
 }
 
+// Добавляет категорию на свой уровень, а не в конец всего дерева: если у
+// контейнера есть дочерний «остаток» (следующий уровень вложенности), новая
+// категория вставляется ПЕРЕД ним — иначе при показе (flatten()) она попадёт
+// после всей вложенной поддерева следующих уровней и будет выглядеть так,
+// будто уходит с более глубокого уровня, чем на самом деле.
+function insertCategoryChild(parent, node){
+  parent.children = parent.children || [];
+  const remIdx = parent.children.findIndex(ch => ch.kind === "base" && ch.value == null);
+  if(remIdx === -1) parent.children.push(node);
+  else parent.children.splice(remIdx, 0, node);
+}
+
 function freshUid(){
   return "c" + (uidSeq++) + "_" + Math.random().toString(36).slice(2,7);
 }
@@ -1822,8 +1834,7 @@ function bindEvents(){
         render(); return;
       }
     }
-    parent.children = parent.children || [];
-    parent.children.push({ uid: freshUid(), kind: type==="pct"?"pct":"fixed", value: Math.max(0,val), name, custom: true, baseException: false });
+    insertCategoryChild(parent, { uid: freshUid(), kind: type==="pct"?"pct":"fixed", value: Math.max(0,val), name, custom: true, baseException: false });
     save();
   });
 
@@ -1856,8 +1867,7 @@ function bindEvents(){
         }
       }
       parent.children.splice(idx,1);
-      newParent.children = newParent.children || [];
-      newParent.children.push(nd);
+      insertCategoryChild(newParent, nd);
       save();
     });
   });
