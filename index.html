@@ -15,7 +15,7 @@
 <!-- График — Chart.js через CDN -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
-  /* ==== ТОЧНОЕ ОФОРМЛЕНИЕ ТЕКУЩЕЙ ВЕРСИИ (без изменений) ==== */
+  /* ==== ОФОРМЛЕНИЕ ==== */
   :root{
     --navy-deep:#0B1D33;
     --navy:#13294B;
@@ -44,7 +44,8 @@
     position:sticky; top:0; z-index:5;
   }
   .topbar h1{margin:0; font-size:20px; font-weight:700; letter-spacing:.2px;}
-  .topbar .sub{font-size:12.5px; color:var(--text-dim); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .topbar .sub{font-size:12.5px; color:var(--text-dim); margin-top:2px; line-height:1.4;}
+  .topbar .sub .nw{white-space:nowrap;}
   main{flex:1; overflow-y:auto; overflow-x:hidden; min-width:0; width:100%; padding:14px 14px calc(86px + env(safe-area-inset-bottom,0px)) 14px;}
   .card{
     background:var(--navy-card);
@@ -62,9 +63,6 @@
   .row .value{font-size:15.5px; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap;}
   .value.neg{color:var(--danger);}
   .value.pos{color:var(--good);}
-  .big-stat{display:flex; flex-direction:column; gap:2px; margin-bottom:6px;}
-  .big-stat .num{font-size:30px; font-weight:800; font-variant-numeric:tabular-nums; letter-spacing:-.5px;}
-  .big-stat .cap{font-size:12px; color:var(--text-dim);}
   .grid2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
   .mini{background:var(--navy); border:1px solid var(--line); border-radius:12px; padding:12px; min-width:0;}
   .mini .num{font-size:18px; font-weight:800; font-variant-numeric:tabular-nums; word-break:break-word;}
@@ -76,7 +74,6 @@
   }
   input:focus{outline:2px solid var(--gold); outline-offset:1px;}
   input[disabled]{opacity:.55;}
-  .pct-input{width:74px !important; text-align:right; flex:0 0 74px !important;}
   label.field{display:block; font-size:12px; color:var(--text-dim); margin-bottom:4px;}
   .btn{
     display:inline-flex; align-items:center; justify-content:center; gap:6px;
@@ -87,14 +84,6 @@
   .btn.secondary{background:transparent; color:var(--gold); border:1px solid var(--gold);}
   .btn.danger{background:transparent; color:var(--danger); border:1px solid var(--danger);}
 
-  .cat-row{display:flex; flex-direction:column; gap:7px; padding:12px 0; border-bottom:1px solid rgba(255,255,255,0.05);}
-  .cat-row:last-child{border-bottom:none;}
-  .cat-row .title-row{width:100%; min-width:0;}
-  .cat-row .meta-row{display:flex; justify-content:space-between; align-items:center; gap:10px;}
-  .cat-row .meta-left{flex:1; min-width:0; display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
-  .cat-row .meta-right{display:flex; align-items:center; gap:10px; flex:0 0 auto;}
-  .cat-row .comment{font-size:11px; color:var(--text-dim); line-height:1.35;}
-  .cat-row .amount{font-size:13px; color:var(--mint); font-weight:700; min-width:74px; text-align:right; flex:0 0 auto;}
 
   /* --- бегущая строка для длинных названий --- */
   .marquee{ overflow:hidden; white-space:nowrap; position:relative; flex:1 1 auto; min-width:0; width:100%; }
@@ -110,29 +99,29 @@
   .tree-line.container .tname .marquee-track > span{font-size:13.5px; font-weight:800;}
   .cat-name .marquee-track > span{font-size:13px; font-weight:600;}
   .set-row .s-name .marquee-track > span{font-size:13.5px; font-weight:600;}
-  .income-item .month .marquee-track > span{font-size:14px; font-weight:600; color:var(--text-dim);}
+  .income-item .inc-com .marquee-track > span{font-size:12px; font-weight:500; color:var(--text-dim);}
   /* Метки внутри бегущей строки («фикс», «%», «своя») — по центру строки, без своего отступа сверху */
   .marquee .tag{margin-top:0; vertical-align:middle;}
   .marquee .cnt{margin-right:4px;}
 
   .tag{display:inline-block; font-size:10px; padding:2px 7px; border-radius:20px; margin-top:4px;}
   .tag.safe{background:rgba(95,201,182,.15); color:var(--mint);}
-  .tag.metal{background:rgba(212,175,106,.15); color:var(--gold);}
-  .tag.aggr{background:rgba(224,141,110,.15); color:var(--coral);}
   .tag.gray{background:rgba(154,170,196,.15); color:var(--text-dim);}
   .warn{font-size:12.5px; color:var(--danger); margin-top:8px;}
   .ok{font-size:12.5px; color:var(--good); margin-top:8px;}
   .income-item{display:flex; justify-content:space-between; align-items:center; padding:9px 0;
     border-bottom:1px solid rgba(255,255,255,0.05);}
   .income-item:last-child{border-bottom:none;}
-  .income-item .month{font-size:14px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .income-item{gap:10px;}
+  .income-item .inc-main{flex:1; min-width:0;}
+  .income-item .inc-date{font-size:14px; font-weight:600; color:var(--text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .income-item .inc-com{margin-top:2px;}
+  .income-item .inc-right{display:flex; align-items:center; gap:6px; flex:none;}
   .income-item .amt{font-weight:700; font-variant-numeric:tabular-nums;}
   .income-item .del{color:var(--text-dim); font-size:18px; padding:2px 8px; cursor:pointer;}
   .add-income{display:flex; gap:8px; margin-top:10px;}
   .add-income input{flex:1;}
   .add-income .btn{flex:1; width:auto;}
-  .flow{display:flex; align-items:center; gap:8px; margin:6px 0; font-size:13px; color:var(--text-dim);}
-  .flow .arrow{color:var(--gold); font-size:16px;}
   nav.tabbar{
     position:fixed; left:0; right:0; bottom:0;
     background:var(--navy); border-top:1px solid var(--line);
@@ -187,7 +176,6 @@
      названия слева, суммы — по центру отведённой колонки */
   .tree-line.tree-line-c .tname{flex:0 0 58%;}
   .tree-line.tree-line-c .tamount{flex:1; text-align:center;}
-  .indent-0{padding-left:0;} .indent-1{padding-left:16px;} .indent-2{padding-left:32px;} .indent-3{padding-left:48px;}
 
   /* Настройки: ползунки и ряды категорий */
   .set-row{display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05); flex-wrap:wrap;}
@@ -199,7 +187,6 @@
   .seg button.active{background:var(--gold); color:#1A1404; font-weight:700;}
 
   /* Добавить категорию */
-  .form-field{margin-bottom:10px;}
   .form-grid{display:flex; gap:8px; flex-wrap:wrap;}
   .form-grid > *{flex:1; min-width:120px;}
 
@@ -209,7 +196,6 @@
   .kv:last-child{border-bottom:none;}
   .kv .k{flex:0 0 118px; color:var(--gold); font-weight:700; font-size:12.5px;}
   .kv .v{flex:1; color:var(--text); min-width:0;}
-  .kv.tight .k{flex-basis:92px;}
   .nl{list-style:none; margin:0; padding:0;}
   .nl li{display:flex; gap:8px; padding:7px 0; border-bottom:1px solid rgba(255,255,255,0.05); font-size:13px; line-height:1.45;}
   .nl li:last-child{border-bottom:none;}
@@ -264,7 +250,7 @@
   .toast.warn{border-color:rgba(212,175,106,.6); background:#2E2E3A;}
   .toast.ok{border-color:rgba(95,201,122,.6); background:#1E3A3A;}
   .toast .t-ic{flex:0 0 auto;}
-  .toast .t-txt{flex:1; min-width:0;}
+  .toast .t-txt{flex:1; min-width:0; overflow-wrap:anywhere;}
   .toast .t-x{flex:0 0 auto; background:none; border:none; color:var(--text-dim); font-size:15px; line-height:1;
     padding:2px 4px; cursor:pointer; font-family:inherit;}
   .toast.dragging{transition:none;}
@@ -276,18 +262,27 @@
     padding:16px 12px calc(16px + env(safe-area-inset-bottom,0px)); animation:modal-fade .15s ease;}
   .modal{width:100%; max-width:420px; background:var(--navy-card); border:1px solid var(--line);
     border-radius:18px; padding:18px 16px 14px; box-shadow:0 10px 40px rgba(0,0,0,.5); animation:modal-up .18s ease;}
-  .modal h3{margin:0 0 8px; font-size:16px; font-weight:800; color:var(--text);}
-  .modal .m-txt{font-size:13.5px; color:var(--text-dim); line-height:1.5; margin-bottom:14px;}
+  .modal h3{margin:0 0 8px; font-size:16px; font-weight:800; color:var(--text); overflow-wrap:anywhere;}
+  .modal .m-txt{font-size:13.5px; color:var(--text-dim); line-height:1.5; margin-bottom:14px; overflow-wrap:anywhere;}
   .modal .m-txt b{color:var(--text);}
   .modal .m-btns{display:flex; gap:8px;}
   .modal .m-btns .btn{flex:1;}
   .btn.danger-solid{background:var(--danger); color:#fff;}
+  .modal .m-form{margin-bottom:14px;}
+
+  /* Закрытые месяцы */
+  .h2-row{display:flex; align-items:center; justify-content:space-between; gap:8px; margin:0 0 10px;}
+  .h2-row h2{margin:0;}
+  .h2-plus{flex:none; width:34px; height:34px; border-radius:10px; border:1px solid var(--gold);
+    background:transparent; color:var(--gold); font-size:20px; line-height:1; cursor:pointer; padding:0;}
+  .late-tag{color:var(--gold); font-weight:500;}
+  .row .label.wrap{white-space:normal;}
+  .entry-com{margin:-4px 0 4px;}
+  .entry-com .marquee-track > span{font-size:12.5px; font-weight:500; color:var(--text-dim);}
+  .month-actions{margin:12px 0 4px;}
   @keyframes modal-fade{ from{opacity:0;} to{opacity:1;} }
   @keyframes modal-up{ from{transform:translateY(20px); opacity:0;} to{transform:none; opacity:1;} }
 
-  /* Баннер «есть долги» */
-  .debt-banner{background:rgba(224,92,92,.12); border:1px solid rgba(224,92,92,.4); color:var(--danger);
-    border-radius:var(--radius); padding:14px 16px; font-size:13px; line-height:1.45; margin-bottom:12px;}
 
   /* ===== НОВОЕ: главная (1.1–1.4) ===== */
 
@@ -296,16 +291,9 @@
   select.change-level, select.form-select{background:var(--navy); border:1px solid var(--line); color:var(--text);
     border-radius:10px; padding:9px 10px; font-size:13.5px; font-family:inherit; max-width:100%;}
   select.form-select{width:100%; padding:10px; font-size:14px;}
-  .period-select{flex:1; background:var(--navy); border:1px solid var(--line); color:var(--text);
-    border-radius:10px; padding:10px; font-size:14px; font-family:inherit;}
+  .period-select{flex:1; min-width:0; max-width:100%; background:var(--navy); border:1px solid var(--line); color:var(--text);
+    border-radius:10px; padding:10px; font-size:14px; font-family:inherit; text-overflow:ellipsis;}
 
-  /* Три строки-контейнера («Доход», «Остаток», «Свободный остаток») с переключаемым типом */
-  .locked-row{background:var(--navy-card); border:1px solid var(--line); border-radius:12px; padding:8px 10px; margin:0 0 6px 0;}
-  .locked-row .k2{font-size:12px; color:var(--text-dim); font-weight:400;}
-  .locked-row .v2{font-size:15px; font-weight:800; color:var(--gold); font-variant-numeric:tabular-nums;}
-  .switch2{display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; flex:0 0 auto;}
-  .switch2 button{background:none; border:none; color:var(--text-dim); padding:6px 10px; font-size:11px; font-family:inherit; cursor:pointer;}
-  .switch2 button.active{background:var(--gold); color:#1A1404; font-weight:700;}
 
   /* ===== НОВОЕ: настройки (3.1–3.4) ===== */
 
@@ -325,7 +313,6 @@
   .cat-level{margin:0 0 14px 0; background:rgba(255,255,255,0.03);
     border:1px solid var(--line); border-radius:12px; padding:10px 12px;}
   .cat-level-title{font-size:13px; font-weight:800; color:var(--gold); margin-bottom:2px;}
-  .cat-level-note{font-size:11.5px; color:var(--text-dim); margin-bottom:8px;}
   .cat-level-base{font-size:12px; font-weight:700; color:var(--text); font-variant-numeric:tabular-nums;
     background:rgba(212,175,106,.12); border:1px solid rgba(212,175,106,.35); border-radius:8px;
     padding:6px 10px; margin-bottom:8px;}
@@ -421,8 +408,11 @@ function defaultState(){
     hideDebtNotice: false,    // пользователь закрыл предупреждение о долгах (крестиком) — больше не показываем
     salary: 90000,            // устарело, не используется (оставлено для совместимости старых копий)
     monthGoal: 85000,         // цель дохода на месяц — от неё считается план категорий
+    iisYearGoal: 400000,      // цель пополнения ИИС на год (показывается на главной)
     tree: defaultTree(),      // иерархия категорий
-    incomes: [],              // история доходов: {id, date, amount, comment}
+    incomes: [],              // история доходов: {id, date, amount, comment, late?}
+    frozen: {},               // закрытые месяцы: {"ГГГГ-ММ": {tree, goal, closedAt, alloc}} — см. freezeMonth()
+    reopened: [],             // прошедшие месяцы, открытые заново («ГГГГ-ММ»)
     calCheck: {},             // отметки «Сделано» в календаре действий (ключ = id записи CALENDAR, см. migrateCalCheck())
     ui: { theme: "dark" },    // настройки UI (в текущем дизайне тема только тёмная)
   };
@@ -490,10 +480,53 @@ const loadNotices = [];
 // повторялись бы при каждом запуске (см. конец скрипта).
 let persistAfterLoad = false;
 const MAX_BROKEN_COPIES = 3;
+// Предел для сумм (доход, цели, фикс-суммы): 1 млрд ₽. Расчёт идёт в копейках
+// целыми числами — так даже тысячи пополнений по пределу остаются точными
+// (без предела суммы от ~90 трлн ₽ теряли копейки).
+const MAX_MONEY = 1e9;
+const MAX_MONEY_TXT = "1 000 000 000 ₽";
+// Процент в данных больше этого — явный мусор (через Настройки больше 100% не ввести).
+const MAX_PCT = 1000;
 
+// Только настоящие даты: 2026-02-30 или 2026-04-31 браузер молча «переносит»
+// на следующий месяц, поэтому сверяем день/месяц после разбора.
 function isIsoDate(v){
-  if(typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
-  return !isNaN(new Date(v + "T00:00:00"));
+  const m = typeof v === "string" && /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+  if(!m) return false;
+  const d = new Date(+m[1], +m[2] - 1, +m[3]);
+  return d.getFullYear() === +m[1] && d.getMonth() === +m[2] - 1 && d.getDate() === +m[3];
+}
+
+// Чинит дерево категорий на месте; возвращает число выброшенных узлов и
+// заменённых значений.
+function repairTree(tree){
+  let badNodes = 0, badValues = 0;
+  const seen = new Set();
+  (function walk(n){
+    if(typeof n.uid !== "string" || !n.uid || seen.has(n.uid)) n.uid = n.kind === "root" ? "root" : freshUid();
+    seen.add(n.uid);
+    if(typeof n.name !== "string" || !n.name.trim()) n.name = n.kind === "root" ? "Зарплата" : "Без названия";
+    if(n.kind === "pct" || n.kind === "fixed"){
+      const v = Number(n.value);
+      const max = n.kind === "pct" ? MAX_PCT : MAX_MONEY;
+      if(!isFinite(v) || v < 0 || v > max || n.value === null || n.value === ""){ n.value = 0; badValues++; }
+      else n.value = v;
+      delete n.children;
+      return;
+    }
+    if(n.kind === "base" && n.value != null){
+      const v = Number(n.value);
+      if(!isFinite(v) || v < 0 || v > MAX_PCT){ n.value = null; badValues++; } else n.value = v;
+    }
+    const kids = Array.isArray(n.children) ? n.children : [];
+    n.children = kids.filter(ch => {
+      const ok = ch && typeof ch === "object" && !Array.isArray(ch) && ["base","pct","fixed"].includes(ch.kind);
+      if(!ok) badNodes++;
+      return ok;
+    });
+    n.children.forEach(walk);
+  })(tree);
+  return { badNodes, badValues };
 }
 
 // Проверяет и чинит данные (из LocalStorage или файла импорта) и возвращает
@@ -509,31 +542,7 @@ function normalizeState(parsed){
   const st = Object.assign(defaultState(), JSON.parse(JSON.stringify(parsed)));
 
   // --- дерево категорий ---
-  let badNodes = 0, badValues = 0;
-  const seen = new Set();
-  (function walk(n){
-    if(typeof n.uid !== "string" || !n.uid || seen.has(n.uid)) n.uid = n.kind === "root" ? "root" : freshUid();
-    seen.add(n.uid);
-    if(typeof n.name !== "string" || !n.name.trim()) n.name = n.kind === "root" ? "Зарплата" : "Без названия";
-    if(n.kind === "pct" || n.kind === "fixed"){
-      const v = Number(n.value);
-      if(!isFinite(v) || v < 0 || n.value === null || n.value === ""){ n.value = 0; badValues++; }
-      else n.value = v;
-      delete n.children;
-      return;
-    }
-    if(n.kind === "base" && n.value != null){
-      const v = Number(n.value);
-      if(!isFinite(v) || v < 0){ n.value = null; badValues++; } else n.value = v;
-    }
-    const kids = Array.isArray(n.children) ? n.children : [];
-    n.children = kids.filter(ch => {
-      const ok = ch && typeof ch === "object" && !Array.isArray(ch) && ["base","pct","fixed"].includes(ch.kind);
-      if(!ok) badNodes++;
-      return ok;
-    });
-    n.children.forEach(walk);
-  })(st.tree);
+  const { badNodes, badValues } = repairTree(st.tree);
   const catCount = flatten(st.tree).filter(n => n.kind === "pct" || n.kind === "fixed").length;
   if(!catCount) throw new Error("В файле нет ни одной категории — это не похоже на резервную копию.");
   if(badNodes) fixes.push(`пропущено повреждённых категорий: ${badNodes}`);
@@ -544,12 +553,13 @@ function normalizeState(parsed){
     if(parsed.incomes !== undefined) fixes.push("список доходов повреждён и не загружен");
     st.incomes = [];
   }
-  let badInc = 0, negInc = 0;
+  let badInc = 0, negInc = 0, bigInc = 0;
   const ids = new Set();
   st.incomes = st.incomes.filter(i => {
     if(!i || typeof i !== "object" || !isIsoDate(i.date) || !isFinite(Number(i.amount)) || i.amount === null || i.amount === ""){ badInc++; return false; }
     i.amount = Number(i.amount);
     if(i.amount < 0){ i.amount = 0; negInc++; }
+    if(i.amount > MAX_MONEY){ i.amount = MAX_MONEY; bigInc++; }
     if(typeof i.id !== "string" || !i.id || ids.has(i.id)) i.id = freshUid();
     ids.add(i.id);
     i.comment = typeof i.comment === "string" ? i.comment : "";
@@ -557,10 +567,11 @@ function normalizeState(parsed){
   });
   if(badInc) fixes.push(`пропущено повреждённых записей о доходах: ${badInc}`);
   if(negInc) fixes.push(`отрицательных сумм доходов заменено на 0: ${negInc}`);
+  if(bigInc) fixes.push(`сумм доходов больше ${MAX_MONEY_TXT} уменьшено до предела: ${bigInc}`);
 
   // --- цель на месяц ---
   const g = Number(st.monthGoal);
-  if(st.monthGoal === null || st.monthGoal === "" || !isFinite(g) || g < 0){
+  if(st.monthGoal === null || st.monthGoal === "" || !isFinite(g) || g < 0 || g > MAX_MONEY){
     st.monthGoal = 85000;
     fixes.push("цель на месяц была некорректной — установлено 85 000 ₽");
   } else if(g < 1000){
@@ -569,6 +580,67 @@ function normalizeState(parsed){
     st.monthGoal = 1000;
     fixes.push("цель на месяц была меньше 1 000 ₽ — установлено 1 000 ₽");
   } else st.monthGoal = g;
+
+  // --- цель по ИИС на год ---
+  const ig = Number(st.iisYearGoal);
+  if(parsed.iisYearGoal === undefined) st.iisYearGoal = 400000;
+  else if(st.iisYearGoal === null || st.iisYearGoal === "" || !isFinite(ig) || ig < 1000 || ig > MAX_MONEY){
+    st.iisYearGoal = 400000;
+    fixes.push("цель по ИИС на год была некорректной — установлено 400 000 ₽");
+  } else st.iisYearGoal = ig;
+
+  // --- закрытые месяцы ---
+  // Отпечаток проверяется целиком: дерево цело, цель корректна, у каждого
+  // дохода месяца есть доли, доли — целые копейки по категориям отпечатка и
+  // в сумме равны доходу. Иначе отпечаток выбрасывается, и месяц закроется
+  // заново по текущим настройкам.
+  const isKey = k => /^\d{4}-(0[1-9]|1[0-2])$/.test(k);
+  const rawFrozen = st.frozen && typeof st.frozen === "object" && !Array.isArray(st.frozen) ? st.frozen : {};
+  if(st.frozen !== undefined && rawFrozen !== st.frozen) fixes.push("данные закрытых месяцев повреждены — месяцы будут закрыты заново");
+  st.frozen = {};
+  const badSnaps = [];
+  Object.keys(rawFrozen).forEach(k => {
+    const entries = st.incomes.filter(i => i.date.slice(0, 7) === k);
+    if(!isKey(k) || !entries.length) return;      // пустой или чужой ключ — просто убираем
+    const sn = rawFrozen[k];
+    let ok = sn && typeof sn === "object" && sn.tree && typeof sn.tree === "object" && sn.tree.kind === "root"
+      && isFinite(Number(sn.goal)) && Number(sn.goal) >= 1000 && Number(sn.goal) <= MAX_MONEY
+      && sn.alloc && typeof sn.alloc === "object" && !Array.isArray(sn.alloc);
+    if(ok){
+      const r = repairTree(sn.tree);
+      ok = !r.badNodes && !r.badValues;
+    }
+    if(ok){
+      const leafUids = new Set(flatten(sn.tree).filter(n => n !== sn.tree && !(n.children && n.children.length)).map(n => n.uid));
+      const alloc = {};
+      ok = entries.every(e => {
+        const a = sn.alloc[e.id];
+        if(!a || typeof a !== "object" || Array.isArray(a)) return false;
+        let sum = 0;
+        const m = {};
+        for(const u in a){
+          const v = a[u];
+          if(!leafUids.has(u) || !Number.isInteger(v) || v < 0) return false;
+          if(v){ m[u] = v; sum += v; }
+        }
+        alloc[e.id] = m;
+        return sum === Math.round(e.amount * 100);
+      });
+      if(ok){
+        migrateTree(sn.tree);
+        st.frozen[k] = { tree: sn.tree, goal: Number(sn.goal),
+          closedAt: isIsoDate(sn.closedAt) ? sn.closedAt : k + "-01", alloc };
+      }
+    }
+    if(!ok) badSnaps.push(k);
+  });
+  if(badSnaps.length) fixes.push(`данные закрытых месяцев повреждены (${badSnaps.join(", ")}) — они закрыты заново по текущим настройкам`);
+  const reo = Array.isArray(st.reopened) ? st.reopened : [];
+  st.reopened = [...new Set(reo.filter(k => typeof k === "string" && isKey(k) && !st.frozen[k]))].sort();
+  st.incomes.forEach(i => {
+    if(i.late === true && st.frozen[i.date.slice(0, 7)]) return;
+    delete i.late;
+  });
 
   // --- прочее ---
   if(!st.calCheck || typeof st.calCheck !== "object" || Array.isArray(st.calCheck)) st.calCheck = {};
@@ -669,6 +741,20 @@ function pctFmt(p, digits){
   const d = digits == null ? 1 : digits;
   return n2(p).toLocaleString('ru-RU', {maximumFractionDigits: d}) + "%";
 }
+// Число из поля ввода: принимает и запятую, и точку («37,5» = «37.5»),
+// пробелы между разрядами («1 000»). Что-то кроме числа — NaN.
+function parseNum(s){
+  const t = String(s == null ? "" : s).replace(/[\s\u00a0\u202f]/g, "").replace(",", ".");
+  return /^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(t) ? parseFloat(t) : NaN;
+}
+// Обрезка длинного текста для мест, где нет бегущей строки (пункты списка).
+// По символам, а не UTF-16: эмодзи не разрезаются пополам.
+function shortText(t, max){
+  const ch = [...String(t)];
+  return ch.length > max ? ch.slice(0, max - 1).join("").trimEnd() + "…" : String(t);
+}
+// Значение для поля ввода — с запятой, как пишут по-русски: 61.501 → «61,501».
+function numInp(v){ return String(n2(v)).replace(".", ","); }
 function esc(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
 /* Бегущая строка: дублируем текст, анимация сдвига на -50%.
@@ -797,6 +883,28 @@ function fixNegativesK(d){
   return d;
 }
 
+// Один шаг распределения: пополнение I (копейки) при уже накопленных по
+// категориям S и доходе месяца T. Возвращает доли пополнения по листьям.
+// targets — план категорий на цель (planTree(root, goalK)) в порядке leafs.
+function allocateStep(root, goalK, leafs, targets, S, T, I){
+  const delta = leafs.map(() => 0);
+  const fillPart = Math.min(I, Math.max(0, goalK - T));
+  let left = 0;
+  if(fillPart > 0){
+    const wf = waterfillK(targets.map((t, i) => Math.max(0, t - S[i])), fillPart);
+    wf.got.forEach((g, i) => { delta[i] += g; });
+    left = wf.left;
+  }
+  const extra = I - fillPart + left;
+  if(extra > 0){
+    const desired = planTree(root, T + I, new Map());
+    const d = leafs.map((l, i) => n2(desired.get(l.uid)) - S[i] - delta[i]);
+    fixNegativesK(d);
+    d.forEach((v, i) => { delta[i] += v; });
+  }
+  return delta;
+}
+
 // Распределение пополнений месяца (см. комментарий выше). Всё в копейках.
 function allocateMonth(root, entries, goalK){
   const leafs = allocLeaves(root);
@@ -807,26 +915,106 @@ function allocateMonth(root, entries, goalK){
   const steps = [];
   entries.forEach(e => {
     const I = toK(Math.max(0, n2(e.amount)));
-    const delta = leafs.map(() => 0);
-    const fillPart = Math.min(I, Math.max(0, goalK - T));
-    let left = 0;
-    if(fillPart > 0){
-      const wf = waterfillK(targets.map((t, i) => Math.max(0, t - S[i])), fillPart);
-      wf.got.forEach((g, i) => { delta[i] += g; });
-      left = wf.left;
-    }
+    const delta = allocateStep(root, goalK, leafs, targets, S, T, I);
     T += I;
-    const extra = I - fillPart + left;
-    if(extra > 0){
-      const desired = planTree(root, T, new Map());
-      const d = leafs.map((l, i) => n2(desired.get(l.uid)) - S[i] - delta[i]);
-      fixNegativesK(d);
-      d.forEach((v, i) => { delta[i] += v; });
-    }
     S = S.map((s, i) => s + delta[i]);
     steps.push({ entry: e, delta });
   });
   return { leafs, targets, total: S, steps, totalK: T, goalK };
+}
+
+/* ---------- ЗАКРЫТЫЕ МЕСЯЦЫ ----------
+   Прошедший месяц закрывается при первом запуске после его окончания
+   (closePastMonths()): в state.frozen["ГГГГ-ММ"] сохраняется отпечаток
+   {tree, goal, closedAt, alloc} — дерево категорий и цель того месяца и доли
+   каждого пополнения (alloc[idДохода][uid] = копейки, нули не храним).
+   Закрытый месяц показывается только из отпечатка — новые настройки на него
+   не влияют. Изменить можно одно: добавить доход (addLateIncome(): по дереву
+   и цели отпечатка поверх уже распределённого; такой доход помечен late:true
+   и его можно удалить). «Открыть месяц заново» удаляет отпечаток и кладёт
+   месяц в state.reopened — он снова считается по текущим настройкам, пока
+   его не закроют кнопкой «Закрыть месяц». */
+function monthKeyOf(year, month){ return year + "-" + String(month).padStart(2, "0"); }
+function curMonthKey(){ return todayISO().slice(0, 7); }
+function isClosedMonth(key){ return !!key && key < curMonthKey() && !state.reopened.includes(key); }
+function monthIncomes(key){ return state.incomes.filter(i => String(i.date).slice(0, 7) === key); }
+function monthTitle(key){
+  const [y, m] = key.split("-").map(Number);
+  return `${MONTHS_NOM[m]} ${y}`;
+}
+
+// Снимает отпечаток месяца по ТЕКУЩИМ настройкам.
+function freezeMonth(key){
+  const entries = monthIncomes(key);
+  entries.forEach(i => { delete i.late; });
+  if(!entries.length){ delete state.frozen[key]; return; }
+  const tree = JSON.parse(JSON.stringify(cleanTree(state.tree)));
+  const goal = n2(state.monthGoal);
+  const calc = allocateMonth(tree, entries, toK(goal));
+  const alloc = {};
+  calc.steps.forEach(st => {
+    const m = {};
+    calc.leafs.forEach((l, i) => { if(st.delta[i]) m[l.uid] = st.delta[i]; });
+    alloc[st.entry.id] = m;
+  });
+  state.frozen[key] = { tree, goal, closedAt: todayISO(), alloc };
+}
+
+// Закрывает прошедшие месяцы с доходами, у которых ещё нет отпечатка
+// (кроме открытых заново). true — что-то изменилось, нужно сохранить.
+function closePastMonths(){
+  const cur = curMonthKey();
+  let changed = false;
+  new Set(state.incomes.map(i => String(i.date).slice(0, 7))).forEach(k => {
+    if(k < cur && !state.frozen[k] && !state.reopened.includes(k)){ freezeMonth(k); changed = true; }
+  });
+  return changed;
+}
+
+// Расчёт закрытого месяца из отпечатка — в том же виде, что allocateMonth().
+function frozenCalc(snap, entries){
+  const leafs = allocLeaves(snap.tree);
+  const goalK = toK(snap.goal);
+  const planGoal = planTree(snap.tree, goalK, new Map());
+  const targets = leafs.map(l => n2(planGoal.get(l.uid)));
+  const steps = entries.map(e => {
+    const a = snap.alloc[e.id] || {};
+    return { entry: e, delta: leafs.map(l => n2(a[l.uid])) };
+  });
+  const total = leafs.map((_, i) => steps.reduce((s, st) => s + st.delta[i], 0));
+  const totalK = entries.reduce((s, e) => s + toK(e.amount), 0);
+  return { leafs, targets, total, steps, totalK, goalK };
+}
+
+// Доход в закрытый месяц: по дереву и цели отпечатка поверх уже
+// распределённого; прежние доли не меняются.
+function addLateIncome(key, inc){
+  const snap = state.frozen[key];
+  const calc = frozenCalc(snap, monthIncomes(key));
+  const delta = allocateStep(snap.tree, calc.goalK, calc.leafs, calc.targets, calc.total, calc.totalK, toK(inc.amount));
+  const m = {};
+  calc.leafs.forEach((l, i) => { if(delta[i]) m[l.uid] = delta[i]; });
+  inc.late = true;
+  state.incomes.push(inc);
+  snap.alloc[inc.id] = m;
+}
+
+// Сколько распределено в ИИС (uid "b2") за год, копейки: закрытые месяцы —
+// из отпечатков, открытые — по текущим настройкам.
+const IIS_UID = "b2";
+function iisForYearK(year){
+  const goalK = toK(state.monthGoal);
+  let sum = 0;
+  for(let m = 1; m <= 12; m++){
+    const key = monthKeyOf(year, m);
+    const entries = monthIncomes(key);
+    if(!entries.length) continue;
+    const snap = state.frozen[key];
+    const calc = snap ? frozenCalc(snap, entries) : allocateMonth(state.tree, entries, goalK);
+    const idx = calc.leafs.findIndex(l => l.uid === IIS_UID);
+    if(idx >= 0) sum += calc.total[idx];
+  }
+  return sum;
 }
 
 // node.amount — план на цель месяца (читают Настройки).
@@ -847,13 +1035,27 @@ const LIFE_UID = "b5";
 const MIN_GOAL = 1000; // цель на месяц не может быть меньше (0 — запрещён)
 const LIFE_MIN = 10000; // ниже — показываем рекомендацию увеличить «На жизнь»
 
-function computeTree(){
-  const root = state.tree;
-  const inc = getSelectedIncome();
-  const goalK = toK(Math.max(0, n2(state.monthGoal)));
-  applyAmounts(root, planTree(root, goalK, new Map()));
+// Дерево, показанное сейчас на главной (текущее или из отпечатка закрытого
+// месяца) — его же рисует drawChart().
+let viewTree = null;
 
-  const calc = allocateMonth(root, inc.entries, goalK);
+function computeTree(){
+  const inc = getSelectedIncome();
+  const planGoalK = toK(Math.max(0, n2(state.monthGoal)));
+  // План на цель по текущим настройкам — всегда (его читают Настройки)
+  applyAmounts(state.tree, planTree(state.tree, planGoalK, new Map()));
+
+  const key = inc.month ? monthKeyOf(inc.year, inc.month) : null;
+  const snap = key && inc.entries.length ? state.frozen[key] : null;
+  let root, calc;
+  if(snap){
+    root = JSON.parse(JSON.stringify(snap.tree));   // копия для отображения
+    calc = frozenCalc(snap, inc.entries);
+  } else {
+    root = state.tree;
+    calc = allocateMonth(root, inc.entries, planGoalK);
+  }
+  const goalK = calc.goalK;
   const toMap = arr => new Map(calc.leafs.map((l, i) => [l.uid, arr[i]]));
   let viewArr;
   if(!state.incomes.length) viewArr = calc.targets;           // доходов нет — план на цель
@@ -877,7 +1079,10 @@ function computeTree(){
     n.pctOfSalary = viewRootAmt > 0 ? (n2(n.viewAmount)/viewRootAmt)*100 : 0;
   })(root);
   root._income = inc;
-  root._calc = { goalK, monthK: calc.totalK, lifeK, lifeName: lifeIdx >= 0 ? calc.leafs[lifeIdx].name : "" };
+  root._calc = { goalK, monthK: calc.totalK, lifeK, lifeName: lifeIdx >= 0 ? calc.leafs[lifeIdx].name : "",
+    key, frozen: !!snap, closedAt: snap ? snap.closedAt : null,
+    closed: !!key && isClosedMonth(key), reopened: !!key && state.reopened.includes(key) };
+  viewTree = root;
   return root;
 }
 
@@ -928,16 +1133,6 @@ function latestIncome(){
   return best;
 }
 
-// Сумма всех поступлений за указанный месяц/год
-function incomeByPeriod(month, year){
-  return state.incomes.reduce((s,i)=>{
-    const d = new Date(i.date + "T00:00:00");
-    if(isNaN(d)) return s;
-    if(d.getMonth()+1 === month && d.getFullYear() === year) return s + n2(i.amount);
-    return s;
-  }, 0);
-}
-
 // Список отдельных поступлений за указанный месяц/год (для селектора «Пополнение»)
 function incomeEntriesByPeriod(month, year){
   return state.incomes.filter(i => {
@@ -972,7 +1167,6 @@ function getSelectedIncome(){
   return { month: selMonth, year: selYear, total, monthTotal, entries, selectedEntry };
 }
 
-// Процент с ОДНИМ знаком: 12 → "12%", 30.4 → "30.4%"
 // Дата коротко: 2026-10-22 → 22.10.2026
 function dateShort(iso){
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ""));
@@ -983,8 +1177,6 @@ function pct1(p){ return pctFmt(p, 1); }
 // Русские названия месяцев (для заголовка и подписи)
 const MONTHS_GEN = ["","января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
 const MONTHS_NOM = ["","Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
-// Названия месяцев для селектора (сокращённо, для компактности)
-const MONTHS_SHORT = ["","янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
 /* Плоский список всех узлов дерева (в порядке обхода) — для отображения иерархии */
 function flatten(node, arr){
   arr = arr || [];
@@ -1114,8 +1306,9 @@ function toast(msg, type){
 }
 
 /* ---------- окно подтверждения ----------
-   confirmDialog({title, html, okText}, onOk): «Отмена» / кнопка действия.
-   Закрывается без действия по «Отмена», тапу по фону или Esc. */
+   confirmDialog({title, html, okText, okClass, focus}, onOk): «Отмена» /
+   кнопка действия. Закрывается без действия по «Отмена», тапу по фону или
+   Esc. Если onOk() вернул false (например, ошибка в форме) — окно остаётся. */
 function confirmDialog(opts, onOk){
   document.querySelector(".modal-back")?.remove();
   const back = document.createElement("div");
@@ -1126,17 +1319,17 @@ function confirmDialog(opts, onOk){
       <div class="m-txt">${opts.html || ""}</div>
       <div class="m-btns">
         <button type="button" class="btn secondary" data-m-cancel>Отмена</button>
-        <button type="button" class="btn danger-solid" data-m-ok>${esc(opts.okText || "Удалить")}</button>
+        <button type="button" class="btn ${opts.okClass == null ? "danger-solid" : opts.okClass}" data-m-ok>${esc(opts.okText || "Удалить")}</button>
       </div>
     </div>`;
   const close = () => { back.remove(); document.removeEventListener("keydown", onKey); };
   const onKey = e => { if(e.key === "Escape") close(); };
   back.addEventListener("click", e => { if(e.target === back) close(); });
   back.querySelector("[data-m-cancel]").addEventListener("click", close);
-  back.querySelector("[data-m-ok]").addEventListener("click", () => { close(); onOk(); });
+  back.querySelector("[data-m-ok]").addEventListener("click", () => { if(onOk() !== false) close(); });
   document.addEventListener("keydown", onKey);
   document.body.appendChild(back);
-  back.querySelector("[data-m-cancel]").focus();
+  (opts.focus && back.querySelector(opts.focus) || back.querySelector("[data-m-cancel]")).focus();
 }
 
 /* ---------- главная навигация ---------- */
@@ -1154,7 +1347,13 @@ function setActiveView(v){
 // Любая ошибка отрисовки → аварийный экран с экспортом/импортом вместо
 // пустого белого экрана (данные при этом не меняются).
 function render(){
-  try{ renderView(); }
+  try{
+    // Месяц мог закончиться, пока приложение открыто (без сворачивания) —
+    // закрываем его до любых действий, иначе прошедший месяц без отпечатка
+    // считался бы по текущим настройкам. save() снова вызовет render().
+    if(closePastMonthsNotice()){ save(); return; }
+    renderView();
+  }
   catch(e){ console.error(e); renderCrash(e); }
 }
 function renderCrash(err){
@@ -1181,9 +1380,10 @@ function renderView(){
   const inc = root._income;
   const totalAll = state.incomes.reduce((s,i)=>s+n2(i.amount),0);
   const lastInc = latestIncome();
-  document.getElementById("topSub").textContent =
+  // Две части не разрываются внутри: на узком экране вторая уходит на новую строку
+  document.getElementById("topSub").innerHTML =
     lastInc
-      ? `ЗП: ${fmt(lastInc.amount)} последняя · Всего доходов: ${fmt(totalAll)}`
+      ? `<span class="nw">ЗП: ${fmt(lastInc.amount)} последняя</span> · <span class="nw">Всего доходов: ${fmt(totalAll)}</span>`
       : `Доходов пока нет`;
 
   document.querySelectorAll("main .view").forEach(v => v.remove());
@@ -1194,7 +1394,7 @@ function renderView(){
 
   if(activeView === "home") view.innerHTML = renderHome(root);
   if(activeView === "incomes") view.innerHTML = renderIncomes();
-  if(activeView === "settings") view.innerHTML = renderSettings(root);
+  if(activeView === "settings") view.innerHTML = renderSettings(state.tree);
   if(activeView === "info") view.innerHTML = renderInfo();
 
   main.appendChild(view);
@@ -1238,13 +1438,13 @@ function renderHome(root){
     <div class="period-row" style="margin-top:8px;">
       <select id="selIncomeEntry" class="period-select" style="flex:1 1 100%;">
         <option value="__ALL__" ${!inc.selectedEntry ? "selected":""}>Итого за месяц — ${fmt(inc.monthTotal)}</option>
-        ${inc.entries.map(e => `<option value="${esc(e.id)}" ${inc.selectedEntry && inc.selectedEntry.id===e.id ? "selected":""}>${esc(dateShort(e.date))}${e.comment ? " · "+esc(e.comment) : ""} — ${fmt(e.amount)}</option>`).join("")}
+        ${inc.entries.map(e => `<option value="${esc(e.id)}" ${inc.selectedEntry && inc.selectedEntry.id===e.id ? "selected":""}>${esc(dateShort(e.date))}${e.comment ? " · "+esc(shortText(e.comment, 30)) : ""}${e.late ? " · после закрытия" : ""} — ${fmt(e.amount)}</option>`).join("")}
       </select>
     </div>` : "";
 
   // Заголовок суммы: «Доход за сентябрь 2026 г.» либо «Пополнение от ...», если выбрано одно
   const title = inc.selectedEntry
-    ? `Пополнение от ${ruDate(inc.selectedEntry.date)}${inc.selectedEntry.comment ? " · "+inc.selectedEntry.comment : ""}`
+    ? `Пополнение от ${ruDate(inc.selectedEntry.date)}`
     : (inc.month ? `Доход за ${MONTHS_NOM[inc.month].toLowerCase()} ${selY} г.` : "Доход не выбран");
   const chartCaption = inc.selectedEntry ? "Выбранное пополнение" : (state.incomes.length ? "Доход за месяц" : "План на цель");
 
@@ -1260,9 +1460,20 @@ function renderHome(root){
       <div class="goal-bar"><div style="width:${pctGoal.toFixed(1)}%"></div></div>
       ${got >= goal
         ? `<div class="check-banner good">✓ Цель месяца достигнута${got > goal ? ` · сверх цели ${fmt(got - goal)} распределено по процентам из настроек` : ""}.</div>`
-        : `<div class="lock-note">До цели: ${fmt(goal - got)} (${pct1(pctGoal)} собрано). Пока цель не достигнута, каждое пополнение делится поровну между категориями, которые ещё не набрали свою месячную сумму.</div>`}`;
+        : `<div class="lock-note">До цели: ${fmt(goal - got)} (${pct1(pctGoal)} собрано). Пока цель не достигнута, каждое пополнение делится поровну между категориями, которые ещё не набрали свою месячную сумму.</div>`}
+      ${iisGoalHTML(selY)}`;
   }
-  const lifeHint = lifeHintHTML(calc.lifeK, calc.lifeName, state.incomes.length ? "в этом месяце" : "по плану на месяц");
+  // Закрытому месяцу советы по настройкам не нужны — они на него не влияют
+  const lifeHint = calc.frozen ? "" : lifeHintHTML(calc.lifeK, calc.lifeName, state.incomes.length ? "в этом месяце" : "по плану на месяц");
+  let monthStatus = "";
+  if(calc.closed) monthStatus = calc.frozen
+    ? `<div class="lvl-note warn" style="margin-top:10px;">🔒 Месяц закрыт ${esc(ruDate(calc.closedAt))}. Суммы зафиксированы по настройкам и цели на момент закрытия — изменения в настройках на них не влияют. Добавить доход в этот месяц — кнопка ＋ в «Как делится доход».</div>`
+    : `<div class="lvl-note warn" style="margin-top:10px;">🔒 Месяц закрыт. Добавить в него доход — кнопка ＋ в «Как делится доход».</div>`;
+  else if(calc.reopened) monthStatus = `<div class="lvl-note warn" style="margin-top:10px;">↺ Месяц открыт заново: он считается по текущим настройкам и цели. Когда закончите — нажмите «Закрыть месяц» внизу страницы.</div>`;
+  const monthActions = !calc.key || calc.key >= curMonthKey() ? ""
+    : calc.reopened
+      ? `<div class="month-actions"><button class="btn secondary" id="closeMonthBtn">🔒 Закрыть месяц</button></div>`
+      : `<div class="month-actions"><button class="btn danger" id="reopenMonthBtn">↺ Открыть месяц заново</button></div>`;
 
   // Дерево распределения: два столбца (название слева, значение справа).
   // У контейнеров («Доход», «Остаток», «Свободный остаток») значение по центру колонки.
@@ -1278,9 +1489,8 @@ function renderHome(root){
     const pctTxt = isContainer ? "" : `<span class="pct"> · ${pct1(node.pctOfSalary)}</span>`;
     // Все строки — одним списком без отступов: названия слева, значения по колонкам.
     // Длинные названия — бегущей строкой (mq), чтобы ничего не вылезало за экран.
-    const myIndent = 0;
     const nameHTML = cnt + esc(name) + (tag ? " " + tag : "");
-    return `<div class="tree-line ${cls} indent-${myIndent} ${isContainer?"tree-line-c":""}">
+    return `<div class="tree-line ${cls} ${isContainer?"tree-line-c":""}">
       <div class="tname">${mq(nameHTML)}</div>
       <div class="tamount">${fmt(node.viewAmount)}${isContainer ? "" : pctTxt}</div>
     </div>`;
@@ -1304,8 +1514,10 @@ function renderHome(root){
       ${periodCtrl}
       ${incomeSelCtrl}
       ${inc.month ? `
-        <div class="row" style="margin-top:8px;"><div class="label">${esc(title)}</div><div class="value pos">${fmt(total)}</div></div>
+        <div class="row" style="margin-top:8px;"><div class="label wrap">${esc(title)}</div><div class="value pos">${fmt(total)}</div></div>
+        ${inc.selectedEntry && inc.selectedEntry.comment ? `<div class="entry-com">${mq(esc(inc.selectedEntry.comment))}</div>` : ""}
         ${goalHTML}
+        ${monthStatus}
       ` : `<div class="empty">Доходов пока нет — добавьте первую запись. Ниже — план на цель ${fmt(goal)} в месяц.</div>`}
       ${lifeHint}
       <div style="height:12px;"></div>
@@ -1313,14 +1525,39 @@ function renderHome(root){
     </div>
 
     <div class="card">
-      <h2>Как делится доход</h2>
+      <div class="h2-row">
+        <h2>Как делится доход</h2>
+        ${calc.closed ? `<button type="button" class="h2-plus" id="lateAddBtn" title="Добавить доход в закрытый месяц" aria-label="Добавить доход в закрытый месяц">＋</button>` : ""}
+      </div>
       <div style="margin-top:4px;">${treeHTML}</div>
     </div>
 
     <div class="reminder">
       📅 Вносите <b>каждый доход</b>, даже если суммы небольшие.
     </div>
+    ${monthActions}
   `;
+}
+
+// Цель по ИИС на год (под целью месяца): сколько собрано в категорию ИИС за
+// год и сколько нужно в месяц до конца года.
+function iisGoalHTML(year){
+  const goal = n2(state.iisYearGoal);
+  if(goal <= 0) return "";
+  const got = iisForYearK(year) / 100;
+  const p = Math.min(100, got / goal * 100);
+  const nowY = Number(todayISO().slice(0, 4)), nowM = Number(todayISO().slice(5, 7));
+  let hint;
+  if(got >= goal) hint = `<div class="check-banner good">✓ Цель по ИИС на ${year} год достигнута${got > goal ? ` · сверх цели ${fmt(got - goal)}` : ""}.</div>`;
+  else if(year < nowY) hint = `<div class="lock-note">Год завершён: собрано ${fmt(got)} из ${fmt(goal)} (${pct1(p)}), не хватило ${fmt(goal - got)}.</div>`;
+  else {
+    const left = year > nowY ? 12 : 12 - nowM + 1;   // месяцев до конца года, включая текущий
+    hint = `<div class="lock-note">Собрано ${fmt(got)} из ${fmt(goal)} (${pct1(p)}). Нужно ещё ${fmt(goal - got)} — это ≈ ${fmt(Math.ceil((goal - got) / left))} в месяц до конца года (${left} ${plural(left, "месяц", "месяца", "месяцев")}).</div>`;
+  }
+  return `
+      <div class="row" style="margin-top:10px;"><div class="label">Цель по ИИС на ${year} год</div><div class="value">${fmt(goal)}</div></div>
+      <div class="goal-bar"><div style="width:${p.toFixed(1)}%"></div></div>
+      ${hint}`;
 }
 
 /* ---------- график (donut) ----------
@@ -1342,10 +1579,10 @@ function catColor(i){
 function drawChart(){
   const canvas = document.getElementById("distChart");
   if(!canvas) return;
-  const items = leaves(state.tree)
+  const root = viewTree || state.tree;
+  const items = leaves(root)
     .map((l, i) => ({ l, color: catColor(i) }))
     .filter(x => n2(x.l.viewAmount) > 0);
-  const root = state.tree;
   const total = n2(root._income && root._income.total);
 
   // Список под диаграммой: цвет · название · сумма · процент (один знак %)
@@ -1417,12 +1654,19 @@ function renderIncomes(){
   const items = inc.map((i, idx) => ({ i, idx }))
     .sort((a, b) => String(b.i.date).localeCompare(String(a.i.date)) || b.idx - a.idx)
     .map(({ i }) => {
+    // Доход закрытого месяца удалить нельзя (кроме добавленных после закрытия)
+    const locked = !i.late && !!state.frozen[String(i.date).slice(0, 7)];
     return `
     <div class="income-item">
-      <div class="month">${mq(esc(ruDate(i.date || "")) + (i.comment ? " · "+esc(i.comment) : ""))}</div>
-      <div style="display:flex;align-items:center;gap:6px;">
+      <div class="inc-main">
+        <div class="inc-date">${esc(ruDate(i.date || ""))}</div>
+        ${i.comment || i.late ? `<div class="inc-com">${mq(esc(i.comment || "") + (i.late ? `${i.comment ? " · " : ""}<span class="late-tag">добавлен после закрытия</span>` : ""))}</div>` : ""}
+      </div>
+      <div class="inc-right">
         <div class="amt">${fmt(i.amount)}</div>
-        <div class="del" data-del-income="${esc(i.id)}" role="button" aria-label="Удалить доход">✕</div>
+        ${locked
+          ? `<div class="del" data-locked-income="${esc(i.id)}" role="button" aria-label="Месяц закрыт" title="Месяц закрыт">🔒</div>`
+          : `<div class="del" data-del-income="${esc(i.id)}" role="button" aria-label="Удалить доход">✕</div>`}
       </div>
     </div>`;
   }).join("") || `<div class="empty">Пока нет записей о доходах</div>`;
@@ -1442,7 +1686,7 @@ function renderIncomes(){
       <input type="date" id="newDate" value="${todayISO()}">
       <div style="height:8px;"></div>
       <label class="field">Сумма (₽)</label>
-      <input type="number" id="newAmount" placeholder="Сумма" inputmode="decimal">
+      <input type="text" id="newAmount" placeholder="Сумма" inputmode="decimal" autocomplete="off">
       <div style="height:8px;"></div>
       <label class="field">Комментарий (необязательно)</label>
       <input type="text" id="newComment" placeholder="Напр. Зарплата за март">
@@ -1457,7 +1701,6 @@ function renderIncomes(){
 }
 
 /* ================= ЭКРАН «НАСТРОЙКИ» ================= */
-// Сообщение о заблокированном изменении (проценты уровня > 100%)
 // Временный черновик формы «Пользовательские категории», чтобы при блокировке
 // (render без сохранения) введённые данные не пропадали.
 let customDraft = null;
@@ -1477,8 +1720,16 @@ function checkLevel(tree, uid){
   const roomPct = Math.max(0, 100 - pctOthers - (B > 0 ? fixOthers / B * 100 : 0));
   const roomRub = Math.max(0, B * (1 - pctOthers/100) - fixOthers);
   const ok = nd.kind === "fixed" ? n2(nd.value) <= roomRub + 0.005 : n2(nd.value) <= roomPct + 1e-6;
-  return { ok, kind: nd.kind, parentUid: parent.uid, base: B,
+  return { ok, kind: nd.kind, parentUid: parent.uid, base: B, pctFull: pctOthers >= 100 - 1e-9,
     roomPct: Math.floor(roomPct * 100) / 100, roomRub: Math.floor(roomRub * 100) / 100 };
+}
+
+// Ошибка во введённом значении категории (или "" — всё в порядке).
+function catValueError(v, kind){
+  if(isNaN(v)) return "";
+  if(v < 0) return "Значение не может быть отрицательным.";
+  if(kind === "fixed" && v > MAX_MONEY) return `Сумма — не больше ${MAX_MONEY_TXT}.`;
+  return "";
 }
 
 // Применяет изменение к копии дерева, проверяет уровень категории uid и только
@@ -1502,8 +1753,8 @@ function tryTreeChange(uid, mutate, onFail){
   const decreased = old && old.kind === nd.kind && old.parentUid === r.parentUid && n2(nd.value) <= old.value + 1e-9;
   if(!r.ok && !decreased){
     const msg = r.kind === "fixed"
-      ? `Нельзя: сумма превысит основу уровня (${fmt(r.base)} при цели ${fmt(n2(state.monthGoal))}). Доступно ещё ${fmt(r.roomRub)}.`
-      : `Нельзя: вместе с остальными категориями уровня проценты превысят основу (${fmt(r.base)}). Доступно ещё ${pctFmt(r.roomPct, 2)}${r.base > 0 ? ` (≈ ${fmt(r.base * r.roomPct / 100)})` : ""}.`;
+      ? `Нельзя: сумма превысит основу уровня (${fmt(r.base)} при цели ${fmt(n2(state.monthGoal))}). Доступно ещё ${fmt(r.roomRub)}.${r.pctFull ? " Проценты остальных категорий уровня уже занимают 100% — сначала уменьшите их." : ""}`
+      : `Нельзя: вместе с остальными категориями уровня проценты превысят основу (${fmt(r.base)}). Доступно ещё ${pctFmt(r.roomPct, 2)}${r.base > 0 ? ` (≈ ${fmt(r.base * r.roomPct / 100)})` : ""}.${r.pctFull ? " Проценты остальных категорий уровня уже занимают 100% — сначала уменьшите их." : ""}`;
     if(onFail) onFail();
     render();   // вернуть в поле прежнее значение
     toast(msg, "err");
@@ -1564,9 +1815,9 @@ function renderCatLevel(container, info){
     // Красная подсветка — уровень перегружен, сумма урезана.
     const overFix = overload && round2(node.amount) + 0.005 < (isPct ? round2(base*n2(node.value)/100) : round2(n2(node.value)));
     const valInput = isPct
-      ? `<input type="number" class="cat-inp${overFix?" over":""}" data-set-value="${node.uid}" data-kind="pct" value="${n2(node.value)}" step="0.1" min="0.1"><span class="inp-sfx">%</span>
+      ? `<input type="text" class="cat-inp${overFix?" over":""}" data-set-value="${node.uid}" data-kind="pct" value="${numInp(node.value)}" inputmode="decimal" autocomplete="off"><span class="inp-sfx">%</span>
          <span class="amount${overFix?" over":""}">${fmt(node.amount)}</span>`
-      : `<input type="number" class="cat-inp${overFix?" over":""}" data-set-value="${node.uid}" data-kind="fixed" value="${n2(node.value)}" step="1" min="0" inputmode="decimal"><span class="inp-sfx">₽</span>
+      : `<input type="text" class="cat-inp${overFix?" over":""}" data-set-value="${node.uid}" data-kind="fixed" value="${numInp(node.value)}" inputmode="decimal" autocomplete="off"><span class="inp-sfx">₽</span>
          <span class="amount${overFix?" over":""}">${fmt(node.amount)}</span>`;
     return `
       <div class="cat-level-row">
@@ -1594,7 +1845,6 @@ function renderCatLevel(container, info){
 }
 
 function renderSettings(root){
-  // Сообщение о заблокированном изменении (показывается один раз)
   // Черновик формы своих категорий (на случай блокировки)
   const draft = customDraft; customDraft = null;
   // редактируемая иерархия категорий — сгруппирована по уровням
@@ -1638,7 +1888,12 @@ function renderSettings(root){
       <div class="section-note">Сколько вы планируете получать в месяц. От этой суммы считается план каждой категории (суммы справа в «Категориях»).<br><br>
         <b>Как распределяется доход.</b> Пока доход месяца меньше цели, каждое пополнение делится поровну между категориями; категория, набравшая свою месячную сумму, выбывает, а её долю получают остальные. Всё, что сверх цели, делится по процентам из настроек (фиксированные суммы к этому времени уже собраны). Уже внесённые пополнения при добавлении новых не пересчитываются.</div>
       <label class="field">Цель, ₽ в месяц</label>
-      <input type="number" id="goalInput" value="${n2(state.monthGoal)}" min="${MIN_GOAL}" step="1000" inputmode="decimal">
+      <input type="text" id="goalInput" value="${numInp(state.monthGoal)}" inputmode="decimal" autocomplete="off">
+      <div class="lock-note" style="margin-top:6px;">Закрытые (прошедшие) месяцы не пересчитываются — они хранят распределение на момент закрытия.</div>
+      <div style="height:12px;"></div>
+      <label class="field">Цель по ИИС, ₽ в год</label>
+      <input type="text" id="iisGoalInput" value="${numInp(state.iisYearGoal)}" inputmode="decimal" autocomplete="off">
+      <div class="lock-note" style="margin-top:6px;">Прогресс — на главной под целью месяца: сколько за год пришло в категорию «ИИС».</div>
     </div>
 
     <div class="card">
@@ -1666,7 +1921,7 @@ function renderSettings(root){
         </div>
         <div>
           <label class="field">Значение</label>
-          <input type="number" id="customValue" placeholder="${draft && draft.type === "fixed" ? "Сумма, ₽" : "Процент"}" inputmode="decimal" value="${draft ? draft.val : ""}">
+          <input type="text" id="customValue" placeholder="${draft && draft.type === "fixed" ? "Сумма, ₽" : "Процент"}" inputmode="decimal" autocomplete="off" value="${draft ? numInp(draft.val) : ""}">
         </div>
       </div>
       <div style="height:10px;"></div>
@@ -1980,11 +2235,16 @@ function bindEvents(){
   // --- Доходы: добавление ---
   document.getElementById("addIncomeBtn")?.addEventListener("click", ()=>{
     const date = document.getElementById("newDate").value;
-    const rawAmount = parseFloat(document.getElementById("newAmount").value);
+    const rawAmount = parseNum(document.getElementById("newAmount").value);
     const comment = document.getElementById("newComment").value.trim();
     if(!date || !isIsoDate(date)){ toast("Укажите дату дохода.", "warn"); return; }
-    if(isNaN(rawAmount) || !isFinite(rawAmount)){ toast("Укажите сумму дохода.", "warn"); return; }
+    if(isNaN(rawAmount) || !isFinite(rawAmount)){ toast("Укажите сумму дохода числом, например 37500 или 37,5.", "warn"); return; }
     if(rawAmount <= 0){ toast("Сумма дохода должна быть больше 0 ₽.", "warn"); return; }
+    if(rawAmount > MAX_MONEY){ toast(`Сумма дохода — не больше ${MAX_MONEY_TXT}.`, "warn"); return; }
+    if(isClosedMonth(date.slice(0, 7))){
+      toast(`${monthTitle(date.slice(0, 7))} уже закрыт. Добавьте доход на главной: выберите этот месяц и нажмите ＋ в «Как делится доход» (или откройте месяц заново).`, "warn");
+      return;
+    }
     const amount = round2(rawAmount);
     state.incomes.push({id: freshUid(), date, amount, comment});
     // На главной сразу показываем месяц нового дохода
@@ -2002,17 +2262,70 @@ function bindEvents(){
     el.addEventListener("click", ()=>{
       const i = state.incomes.find(x => x.id === el.dataset.delIncome);
       if(!i) return;
+      const key = String(i.date).slice(0, 7);
+      const snap = state.frozen[key];
+      if(snap && !i.late){ toast("Доход закрытого месяца удалить нельзя.", "warn"); return; }
       confirmDialog({
         title: "Удалить доход?",
-        html: `<b>${esc(ruDate(i.date || ""))} — ${fmt(i.amount)}</b>${i.comment ? `<br>${esc(i.comment)}` : ""}<br><br>Распределение этого месяца пересчитается. Отменить удаление будет нельзя.`,
+        html: `<b>${esc(ruDate(i.date || ""))} — ${fmt(i.amount)}</b>${i.comment ? `<br>${esc(i.comment)}` : ""}<br><br>${snap
+          ? "Доход будет убран из закрытого месяца вместе со своими долями; остальные суммы месяца не изменятся."
+          : "Распределение этого месяца пересчитается."} Отменить удаление будет нельзя.`,
         okText: "Удалить",
       }, () => {
         // Удаляем по id — на случай, если список успел измениться
         const at = state.incomes.findIndex(x => x.id === i.id);
         if(at === -1) return;
         state.incomes.splice(at, 1);
+        const sn = state.frozen[key];
+        if(sn){
+          delete sn.alloc[i.id];
+          if(!monthIncomes(key).length) delete state.frozen[key];
+        }
         if(save()) toast(`Доход ${fmt(i.amount)} от ${ruDate(i.date)} удалён.`, "ok");
       });
+    });
+  });
+
+  document.querySelectorAll("[data-locked-income]").forEach(el=>{
+    el.addEventListener("click", ()=> toast("Это доход закрытого месяца — его нельзя удалить. Чтобы изменить месяц, выберите его на главной и нажмите «Открыть месяц заново» внизу.", "warn"));
+  });
+
+  // --- Закрытый месяц: добавить доход (＋), открыть заново, закрыть ---
+  document.getElementById("lateAddBtn")?.addEventListener("click", ()=>{
+    if(!selMonth || !selYear) return;
+    openLateIncomeDialog(monthKeyOf(selYear, selMonth));
+  });
+  document.getElementById("reopenMonthBtn")?.addEventListener("click", ()=>{
+    if(!selMonth || !selYear) return;
+    const key = monthKeyOf(selYear, selMonth);
+    const has = !!state.frozen[key];
+    confirmDialog({
+      title: `Открыть ${monthTitle(key).toLowerCase()} заново?`,
+      html: has
+        ? `Сохранённое распределение этого месяца <b>будет удалено безвозвратно</b>, и месяц пересчитается по <b>текущим</b> настройкам и цели (${fmt(n2(state.monthGoal))}). Суммы по категориям могут измениться — если вы уже разложили деньги по старым суммам, лучше этого не делать.<br><br>Доходы месяца можно будет удалять и добавлять как обычно. Потом нажмите «Закрыть месяц», чтобы зафиксировать его снова.`
+        : `Месяц станет обычным: доходы в него можно будет добавлять и удалять, он будет считаться по текущим настройкам. Потом нажмите «Закрыть месяц», чтобы зафиксировать его.`,
+      okText: "Открыть заново",
+    }, () => {
+      delete state.frozen[key];
+      if(!state.reopened.includes(key)) state.reopened.push(key);
+      state.reopened.sort();
+      monthIncomes(key).forEach(i => { delete i.late; });
+      selIncomeChoice = null;
+      if(save()) toast(`${monthTitle(key)} открыт заново.`, "ok");
+    });
+  });
+  document.getElementById("closeMonthBtn")?.addEventListener("click", ()=>{
+    if(!selMonth || !selYear) return;
+    const key = monthKeyOf(selYear, selMonth);
+    confirmDialog({
+      title: `Закрыть ${monthTitle(key).toLowerCase()}?`,
+      html: `Распределение месяца зафиксируется по текущим настройкам и цели (${fmt(n2(state.monthGoal))}). После этого изменения в настройках на него не повлияют.`,
+      okText: "Закрыть месяц", okClass: "",
+    }, () => {
+      state.reopened = state.reopened.filter(k => k !== key);
+      freezeMonth(key);
+      selIncomeChoice = null;
+      if(save()) toast(`${monthTitle(key)} закрыт.`, "ok");
     });
   });
 
@@ -2024,11 +2337,20 @@ function bindEvents(){
 
   // --- Настройки: цель на месяц ---
   document.getElementById("goalInput")?.addEventListener("change", e=>{
-    const v = parseFloat(e.target.value);
+    const v = parseNum(e.target.value);
     // Пустое поле/мусор/меньше минимума — не меняем цель молча, а возвращаем прежнюю.
-    if(e.target.value.trim() === "" || isNaN(v) || !isFinite(v)){ toast("Введите цель на месяц — сумму в рублях.", "warn"); render(); return; }
+    if(e.target.value.trim() === "" || isNaN(v) || !isFinite(v)){ toast("Введите цель на месяц числом, например 85000.", "warn"); render(); return; }
     if(v < MIN_GOAL){ toast(`Цель на месяц — не меньше ${fmt(MIN_GOAL)}.`, "warn"); render(); return; }
+    if(v > MAX_MONEY){ toast(`Цель на месяц — не больше ${MAX_MONEY_TXT}.`, "warn"); render(); return; }
     state.monthGoal = round2(v);
+    save();
+  });
+  document.getElementById("iisGoalInput")?.addEventListener("change", e=>{
+    const v = parseNum(e.target.value);
+    if(e.target.value.trim() === "" || isNaN(v) || !isFinite(v)){ toast("Введите цель по ИИС числом, например 400000.", "warn"); render(); return; }
+    if(v < MIN_GOAL){ toast(`Цель по ИИС — не меньше ${fmt(MIN_GOAL)}.`, "warn"); render(); return; }
+    if(v > MAX_MONEY){ toast(`Цель по ИИС — не больше ${MAX_MONEY_TXT}.`, "warn"); render(); return; }
+    state.iisYearGoal = round2(v);
     save();
   });
 
@@ -2062,9 +2384,13 @@ function bindEvents(){
       const uid = inp.dataset.setValue;
       const hit = findNode(state.tree, uid);
       if(!hit) return;
-      const v = parseFloat(inp.value);
-      const val = isNaN(v)?0:Math.max(0,v);
+      // Пустое поле — 0; не число — подсказка и прежнее значение
+      const v = inp.value.trim() === "" ? 0 : parseNum(inp.value);
       const kind = inp.dataset.kind === "pct" ? "pct" : "fixed";
+      if(isNaN(v)){ render(); toast("Введите число, например 15 или 2,5.", "warn"); return; }
+      const err = catValueError(v, kind);
+      if(err){ render(); toast(err, "warn"); return; }
+      const val = isNaN(v) ? 0 : (kind === "fixed" ? round2(v) : v);
       tryTreeChange(uid, t => { const n = findNode(t, uid).node; n.kind = kind; n.value = val; });
     });
   });
@@ -2079,11 +2405,13 @@ function bindEvents(){
     const name = document.getElementById("customName").value.trim();
     const levelId = document.getElementById("customLevel").value;
     const type = document.getElementById("customType").value;
-    const val = parseFloat(document.getElementById("customValue").value);
-    if(!name || isNaN(val)){ toast(!name ? "Укажите название категории." : "Укажите значение категории.", "warn"); return; }
+    const val = parseNum(document.getElementById("customValue").value);
+    if(!name || isNaN(val)){ toast(!name ? "Укажите название категории." : "Укажите значение категории числом, например 15 или 2,5.", "warn"); return; }
+    const err = catValueError(val, type === "pct" ? "pct" : "fixed");
+    if(err){ toast(err, "warn"); return; }
     const { parent } = containerByLevel(levelId);
     const uid = freshUid();
-    const node = { uid, kind: type==="pct"?"pct":"fixed", value: Math.max(0,val), name, custom: true };
+    const node = { uid, kind: type==="pct"?"pct":"fixed", value: type === "pct" ? val : round2(val), name, custom: true };
     tryTreeChange(uid, t => {
       const hit = findNode(t, parent.uid);
       insertCategoryChild(hit ? hit.node : t, node);
@@ -2106,7 +2434,7 @@ function bindEvents(){
       const nd = hit.node;
       confirmDialog({
         title: "Удалить категорию?",
-        html: `<b>${esc(nd.name)}</b> — ${nd.kind === "pct" ? pctFmt(nd.value) : fmt(nd.value)}<br><br>Её доля перейдёт другим категориям уровня, распределение пересчитается. Отменить удаление будет нельзя.`,
+        html: `<b>${esc(nd.name)}</b> — ${nd.kind === "pct" ? pctFmt(nd.value) : fmt(nd.value)}<br><br>Её доля перейдёт другим категориям уровня, распределение открытых месяцев пересчитается (закрытые не изменятся). Отменить удаление будет нельзя.`,
         okText: "Удалить",
       }, () => {
         const parent = findParentOf(state.tree, uid);
@@ -2235,6 +2563,7 @@ function bindBackupEvents(){
       }, () => {
         state = next;
         selMonth = null; selYear = null; selIncomeChoice = null;
+        closePastMonthsNotice();
         if(!save()) return;
         if(res.fixes.length) toast("Импортировано с исправлениями: " + res.fixes.join("; ") + ".", "warn");
         else toast("Данные восстановлены из файла.", "ok");
@@ -2243,6 +2572,50 @@ function bindBackupEvents(){
     reader.onerror = () => toast("Не удалось прочитать файл.", "err");
     reader.readAsText(file);
     e.target.value = "";
+  });
+}
+
+// Добавление дохода в закрытый месяц key (кнопка ＋ на главной).
+function openLateIncomeDialog(key){
+  const [y, m] = key.split("-").map(Number);
+  const last = key + "-" + String(new Date(y, m, 0).getDate()).padStart(2, "0");
+  const snap = state.frozen[key];
+  const goal = snap ? snap.goal : n2(state.monthGoal);
+  confirmDialog({
+    title: `Доход за ${monthTitle(key).toLowerCase()}`,
+    html: `<div class="m-form">
+        <label class="field">Дата</label>
+        <input type="date" id="lateDate" value="${last}" min="${key}-01" max="${last}">
+        <div style="height:8px;"></div>
+        <label class="field">Сумма (₽)</label>
+        <input type="text" id="lateAmount" placeholder="Сумма" inputmode="decimal" autocomplete="off">
+        <div style="height:8px;"></div>
+        <label class="field">Комментарий (необязательно)</label>
+        <input type="text" id="lateComment" placeholder="Напр. Премия">
+      </div>
+      Месяц закрыт: доход распределится по ${snap ? "настройкам и цели этого месяца на момент закрытия" : "текущим настройкам"} (цель ${fmt(goal)}) поверх уже распределённого — прежние суммы не изменятся.`,
+    okText: "Добавить", okClass: "", focus: "#lateAmount",
+  }, () => {
+    const date = document.getElementById("lateDate").value;
+    const rawAmount = parseNum(document.getElementById("lateAmount").value);
+    const comment = document.getElementById("lateComment").value.trim();
+    if(!isIsoDate(date) || date.slice(0, 7) !== key){ toast(`Укажите дату в пределах месяца: ${monthTitle(key).toLowerCase()}.`, "warn"); return false; }
+    if(isNaN(rawAmount) || !isFinite(rawAmount)){ toast("Укажите сумму дохода числом, например 37500 или 37,5.", "warn"); return false; }
+    if(rawAmount <= 0){ toast("Сумма дохода должна быть больше 0 ₽.", "warn"); return false; }
+    if(rawAmount > MAX_MONEY){ toast(`Сумма дохода — не больше ${MAX_MONEY_TXT}.`, "warn"); return false; }
+    if(!isClosedMonth(key)){ toast(`${monthTitle(key)} уже открыт заново — добавьте доход на вкладке «Доходы».`, "warn"); return; }
+    closePastMonths();   // на случай, если месяц закончился, пока окно было открыто
+    const amount = round2(rawAmount);
+    // В пустой закрытый месяц: отпечаток создаётся по текущим настройкам
+    if(!state.frozen[key]) state.frozen[key] = { tree: JSON.parse(JSON.stringify(cleanTree(state.tree))), goal: n2(state.monthGoal), closedAt: todayISO(), alloc: {} };
+    addLateIncome(key, { id: freshUid(), date, amount, comment });
+    selIncomeChoice = null;
+    if(save()) toast(`Доход ${fmt(amount)} от ${ruDate(date)} добавлен в закрытый месяц.`, "ok");
+  });
+  ["lateDate", "lateAmount", "lateComment"].forEach(id => {
+    document.getElementById(id)?.addEventListener("keydown", e => {
+      if(e.key === "Enter"){ e.preventDefault(); document.querySelector(".modal [data-m-ok]")?.click(); }
+    });
   });
 }
 
@@ -2267,7 +2640,10 @@ window.addEventListener("resize", ()=>{
 });
 
 document.addEventListener("visibilitychange", ()=>{
-  if(!document.hidden && activeView === "home") drawChart();
+  if(document.hidden) return;
+  // Приложение могло быть открыто через границу месяца
+  if(closePastMonthsNotice()) save();
+  else if(activeView === "home") drawChart();
 });
 
 /* ================= PWA: установка + Service Worker ================= */
@@ -2313,7 +2689,16 @@ style.textContent = ".hidden{display:none !important;}";
 document.head.appendChild(style);
 
 /* ---------- старт ---------- */
-if(persistAfterLoad){
+// Месяцы, закончившиеся с прошлого запуска, закрываются (см. freezeMonth()).
+function closePastMonthsNotice(){
+  const before = Object.keys(state.frozen);
+  if(!closePastMonths()) return false;
+  const added = Object.keys(state.frozen).filter(k => !before.includes(k)).sort();
+  if(added.length) toast(`🔒 ${added.length === 1 ? "Закрыт месяц" : "Закрыты месяцы"}: ${added.map(k => monthTitle(k).toLowerCase()).join(", ")}. ${added.length === 1 ? "Его" : "Их"} распределение сохранено и больше не зависит от настроек.`, "ok");
+  return true;
+}
+const closedAtStart = closePastMonthsNotice();
+if(persistAfterLoad || closedAtStart){
   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(snapState())); }catch(e){}
 }
 render();

@@ -1,5 +1,5 @@
 /* Service Worker для offline-работы PWA «Бюджет» */
-const CACHE_NAME = "budget-v5";
+const CACHE_NAME = "budget-v11";
 
 // Chart.js с CDN (та же ссылка, что в index.html). Кладём в кэш при установке,
 // чтобы диаграмма работала офлайн даже при первом запуске без сети.
