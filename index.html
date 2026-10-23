@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.json">
 <title>Бюджет</title>
 <!-- График — Chart.js через CDN -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
   /* ==== ТОЧНОЕ ОФОРМЛЕНИЕ ТЕКУЩЕЙ ВЕРСИИ (без изменений) ==== */
   :root{
@@ -99,18 +99,21 @@
   /* --- бегущая строка для длинных названий --- */
   .marquee{ overflow:hidden; white-space:nowrap; position:relative; flex:1 1 auto; min-width:0; width:100%; }
   .marquee-track{ display:inline-flex; will-change:transform; min-width:100%; }
-  .marquee-track span{ display:inline-block; white-space:nowrap; padding-right:28px; font-size:14.5px; font-weight:600;}
+  .marquee-track > span{ display:inline-block; white-space:nowrap; padding-right:28px; font-size:14.5px; font-weight:600;}
   .marquee.static .marquee-track{ transform:none !important; animation:none !important; }
-  .marquee.static .marquee-track span:nth-child(2){ display:none; }
+  .marquee.static .marquee-track > span:nth-child(2){ display:none; }
   @keyframes marquee-scroll{ from{transform:translateX(0);} to{transform:translateX(-50%);} }
   .marquee.scrolling .marquee-track{ animation:marquee-scroll linear infinite; }
 
   /* Размер текста бегущей строки в разных местах */
-  .tree-line .tname .marquee-track span{font-size:13.5px; font-weight:600;}
-  .tree-line.container .tname .marquee-track span{font-size:13.5px; font-weight:800;}
-  .cat-name .marquee-track span{font-size:13px; font-weight:600;}
-  .set-row .s-name .marquee-track span{font-size:13.5px; font-weight:600;}
-  .income-item .month .marquee-track span{font-size:14px; font-weight:600; color:var(--text-dim);}
+  .tree-line .tname .marquee-track > span{font-size:13.5px; font-weight:600;}
+  .tree-line.container .tname .marquee-track > span{font-size:13.5px; font-weight:800;}
+  .cat-name .marquee-track > span{font-size:13px; font-weight:600;}
+  .set-row .s-name .marquee-track > span{font-size:13.5px; font-weight:600;}
+  .income-item .month .marquee-track > span{font-size:14px; font-weight:600; color:var(--text-dim);}
+  /* Метки внутри бегущей строки («фикс», «%», «своя») — по центру строки, без своего отступа сверху */
+  .marquee .tag{margin-top:0; vertical-align:middle;}
+  .marquee .cnt{margin-right:4px;}
 
   .tag{display:inline-block; font-size:10px; padding:2px 7px; border-radius:20px; margin-top:4px;}
   .tag.safe{background:rgba(95,201,182,.15); color:var(--mint);}
@@ -219,7 +222,8 @@
   .cal-type{display:inline-block; font-size:10px; padding:2px 8px; border-radius:20px; margin-bottom:5px; font-weight:700;}
   .cal-type.podg{background:rgba(154,170,196,.15); color:var(--text-dim);}
   .cal-type.year{background:rgba(95,201,182,.15); color:var(--mint);}
-  .cal-type.key{background:rgba(224,92,92,.2); color:var(--danger);}
+  .cal-type.key{background:rgba(212,175,106,.18); color:var(--gold);}
+  .cal-item + .cal-item{margin-top:12px;}
   .cal-check{display:flex; align-items:flex-start; gap:10px; margin-top:6px;}
   .cal-check input{width:auto; margin-top:2px; flex:0 0 auto;}
   .cal-body{flex:1;}
@@ -248,6 +252,39 @@
   .a2hs button.x{color:var(--text-dim); font-size:16px;}
   .a2hs.hidden{display:none;}
 
+  /* Уведомления (toast): сверху поверх экрана, закрываются ✕, смахиванием вбок или сами */
+  .toasts{position:fixed; left:10px; right:10px; top:calc(env(safe-area-inset-top,0px) + 10px); z-index:30;
+    display:flex; flex-direction:column; gap:8px; pointer-events:none; max-width:520px; margin:0 auto;}
+  .toast{pointer-events:auto; display:flex; align-items:flex-start; gap:10px; padding:12px 12px 12px 14px;
+    border-radius:14px; font-size:13px; line-height:1.45; box-shadow:0 6px 24px rgba(0,0,0,.45);
+    background:var(--navy-card); border:1px solid var(--line); color:var(--text);
+    touch-action:pan-y; user-select:none; transition:transform .2s ease, opacity .2s ease;
+    animation:toast-in .2s ease;}
+  .toast.err{border-color:rgba(255,107,107,.6); background:#3A2234;}
+  .toast.warn{border-color:rgba(212,175,106,.6); background:#2E2E3A;}
+  .toast.ok{border-color:rgba(95,201,122,.6); background:#1E3A3A;}
+  .toast .t-ic{flex:0 0 auto;}
+  .toast .t-txt{flex:1; min-width:0;}
+  .toast .t-x{flex:0 0 auto; background:none; border:none; color:var(--text-dim); font-size:15px; line-height:1;
+    padding:2px 4px; cursor:pointer; font-family:inherit;}
+  .toast.dragging{transition:none;}
+  @keyframes toast-in{ from{opacity:0; transform:translateY(-10px);} to{opacity:1; transform:none;} }
+
+  /* Окно подтверждения (удаление и т.п.) */
+  .modal-back{position:fixed; inset:0; z-index:40; background:rgba(5,12,24,.6);
+    display:flex; align-items:flex-end; justify-content:center;
+    padding:16px 12px calc(16px + env(safe-area-inset-bottom,0px)); animation:modal-fade .15s ease;}
+  .modal{width:100%; max-width:420px; background:var(--navy-card); border:1px solid var(--line);
+    border-radius:18px; padding:18px 16px 14px; box-shadow:0 10px 40px rgba(0,0,0,.5); animation:modal-up .18s ease;}
+  .modal h3{margin:0 0 8px; font-size:16px; font-weight:800; color:var(--text);}
+  .modal .m-txt{font-size:13.5px; color:var(--text-dim); line-height:1.5; margin-bottom:14px;}
+  .modal .m-txt b{color:var(--text);}
+  .modal .m-btns{display:flex; gap:8px;}
+  .modal .m-btns .btn{flex:1;}
+  .btn.danger-solid{background:var(--danger); color:#fff;}
+  @keyframes modal-fade{ from{opacity:0;} to{opacity:1;} }
+  @keyframes modal-up{ from{transform:translateY(20px); opacity:0;} to{transform:none; opacity:1;} }
+
   /* Баннер «есть долги» */
   .debt-banner{background:rgba(224,92,92,.12); border:1px solid rgba(224,92,92,.4); color:var(--danger);
     border-radius:var(--radius); padding:14px 16px; font-size:13px; line-height:1.45; margin-bottom:12px;}
@@ -256,6 +293,9 @@
 
   /* Селектор месяца/года на главной */
   .period-row{display:flex; gap:8px; margin-top:4px;}
+  select.change-level, select.form-select{background:var(--navy); border:1px solid var(--line); color:var(--text);
+    border-radius:10px; padding:9px 10px; font-size:13.5px; font-family:inherit; max-width:100%;}
+  select.form-select{width:100%; padding:10px; font-size:14px;}
   .period-select{flex:1; background:var(--navy); border:1px solid var(--line); color:var(--text);
     border-radius:10px; padding:10px; font-size:14px; font-family:inherit;}
 
@@ -305,6 +345,8 @@
   .cat-inp.over, .cat-level-row .amount.over{color:#FF6B6B; border-color:#FF6B6B; background:rgba(255,107,107,.08);}
   /* Заметки уровня категорий: предупреждение и ошибка */
   .lvl-note{font-size:11.5px; line-height:1.45; padding:7px 10px; border-radius:9px; margin:2px 0 10px;}
+  .goal-bar{height:8px; background:var(--navy); border:1px solid var(--line); border-radius:6px; overflow:hidden; margin:2px 0 6px;}
+  .goal-bar > div{height:100%; background:var(--mint);}
   .lvl-note.warn{background:rgba(212,175,106,.09); color:var(--gold); border:1px solid rgba(212,175,106,.35);}
   .lvl-note.err{background:rgba(255,107,107,.10); color:#FF6B6B; border:1px solid rgba(255,107,107,.45);}
   .cat-level-row .inp-sfx{font-size:12px; color:var(--text-dim); font-weight:600; flex:0 0 auto;}
@@ -352,6 +394,8 @@
 
 <main id="main"></main>
 
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
 <nav class="tabbar">
   <button data-view="home" class="active"><span class="ic">🏠</span>Главная</button>
   <button data-view="incomes"><span class="ic">💰</span>Доходы</button>
@@ -375,7 +419,8 @@ function defaultState(){
     storageVersion: "budget_app_v4",
     hasDebts: false,          // «приложение работает только при отсутствии кредитов и долгов»
     hideDebtNotice: false,    // пользователь закрыл предупреждение о долгах (крестиком) — больше не показываем
-    salary: 90000,            // текущая ЗП (100%)
+    salary: 90000,            // устарело, не используется (оставлено для совместимости старых копий)
+    monthGoal: 85000,         // цель дохода на месяц — от неё считается план категорий
     tree: defaultTree(),      // иерархия категорий
     incomes: [],              // история доходов: {id, date, amount, comment}
     calCheck: {},             // отметки «Сделано» в календаре действий (ключ = id записи CALENDAR, см. migrateCalCheck())
@@ -384,22 +429,20 @@ function defaultState(){
 }
 
 /* Дерево по умолчанию: kind root/base/pct/fixed. base-узел — контейнер:
-   есть value → % от родителя, иначе — остаток. baseException (на pct/fixed) —
-   true: считается отдельно по каждому пополнению («Пополнение» в Настройках),
-   иначе — от суммы месяца («Месяц»). */
+   есть value → % от родителя, иначе — остаток. */
 let uidSeq = 1;
 function defaultTree(){
   return {
     uid: "root", kind: "root", name: "Зарплата", custom: false,
     children: [
-      { uid: "b1", kind: "pct",   value: 1,     name: "Благотворительность", custom: false, baseException: false },
-      { uid: "b2", kind: "fixed", value: 27350, name: "ИИС", custom: false, baseException: false },
-      { uid: "b3", kind: "fixed", value: 6000,  name: "ПДС", custom: false, baseException: false },
+      { uid: "b1", kind: "pct",   value: 1,     name: "Благотворительность", custom: false },
+      { uid: "b2", kind: "fixed", value: 27350, name: "ИИС", custom: false },
+      { uid: "b3", kind: "fixed", value: 6000,  name: "ПДС", custom: false },
       { uid: "b4", kind: "base",  value: null,  name: "Остаток", custom: false, children: [
-        { uid: "b5", kind: "pct", value: 70, name: "На жизнь", custom: false, baseException: false },
+        { uid: "b5", kind: "pct", value: 70, name: "На жизнь", custom: false },
         { uid: "b6", kind: "base", value: null, name: "Свободный остаток", custom: false, children: [
-          { uid: "b7", kind: "pct", value: 30, name: "Подушка безопасности", custom: false, baseException: false },
-          { uid: "b8", kind: "pct", value: 70, name: "Агрессивные накопления", custom: false, baseException: false },
+          { uid: "b7", kind: "pct", value: 30, name: "Подушка безопасности", custom: false },
+          { uid: "b8", kind: "pct", value: 70, name: "Агрессивные накопления", custom: false },
         ]},
       ]},
     ]
@@ -407,7 +450,6 @@ function defaultTree(){
 }
 
 /* ---------- загрузка / сохранение в LocalStorage ---------- */
-let state = load();
 
 // Старое поле b6.value=30 -> null (контейнер-остаток).
 function migrateTree(t){
@@ -415,11 +457,6 @@ function migrateTree(t){
   const hit = findNode(t, "b6");
   const b6 = hit && hit.node;
   if(b6 && b6.kind === "base" && b6.value === 30) b6.value = null;
-}
-
-// Старые доходы без id (id нужен для выбора пополнения на главной).
-function migrateIncomes(list){
-  (list||[]).forEach(i => { if(i && !i.id) i.id = freshUid(); });
 }
 
 // Отметки календаря раньше ключевались по "дата|текст" — переносим на
@@ -438,54 +475,161 @@ function migrateCalCheck(st){
   Object.keys(st.calCheck).forEach(k => {
     if(/^\d{4}-\d{2}-\d{2}\|/.test(k)){ delete st.calCheck[k]; changed = true; }
   });
+  // Удалённые из календаря пункты — их отметки больше не нужны
+  ["prep-cushion-risk"].forEach(k => {
+    if(Object.prototype.hasOwnProperty.call(st.calCheck, k)){ delete st.calCheck[k]; changed = true; }
+  });
   return changed;
 }
 
-// Только для импорта (см. вызов ниже): отрицательные значения из вручную
-// отредактированного файла -> 0. Возвращает число исправлений, чтобы
-// обработчик импорта честно предупредил пользователя, а не промолчал.
-function sanitizeValues(st){
-  let fixedCount = 0;
-  const clamp = (v) => {
-    const c = Math.max(0, n2(v));
-    return c;
-  };
-  (function walk(n){
-    if(!n) return;
-    if(n.kind === "pct" || n.kind === "fixed"){
-      const c = clamp(n.value);
-      if(c !== n.value){ n.value = c; fixedCount++; }
-    }
-    (n.children||[]).forEach(walk);
-  })(st.tree);
-  (st.incomes||[]).forEach(i => {
-    if(!i) return;
-    const c = clamp(i.amount);
-    if(c !== i.amount){ i.amount = c; fixedCount++; }
-  });
-  return fixedCount;
+// Сообщения о проблемах при загрузке: показываются уведомлением после
+// первой отрисовки (во время load() интерфейса ещё нет).
+const loadNotices = [];
+// true — load() отремонтировал данные и сохранил копию исходных: при старте
+// записываем исправленную версию, иначе ремонт, копия и уведомление
+// повторялись бы при каждом запуске (см. конец скрипта).
+let persistAfterLoad = false;
+const MAX_BROKEN_COPIES = 3;
+
+function isIsoDate(v){
+  if(typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  return !isNaN(new Date(v + "T00:00:00"));
 }
 
-// Намеренно без sanitizeValues() — обычные данные и так валидны (см. выше).
-function load(){
-  try{
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if(!raw) return defaultState();
-    const parsed = JSON.parse(raw);
-    const base = defaultState();
-    if(parsed && parsed.tree && parsed.tree.kind) base.tree = parsed.tree;
-    const res = Object.assign(base, parsed);
-    migrateTree(res.tree);
-    migrateIncomes(res.incomes);
-    return res;
-  }catch(e){ return defaultState(); }
+// Проверяет и чинит данные (из LocalStorage или файла импорта) и возвращает
+// НОВЫЙ объект состояния — исходный не трогает. Не похоже на данные этого
+// приложения → исключение (с понятным текстом). Мелкие повреждения чинятся,
+// а список исправлений возвращается в fixes, чтобы честно сообщить о них.
+function normalizeState(parsed){
+  const notOurs = "Похоже, это не файл резервной копии этого приложения.";
+  if(!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(notOurs);
+  const t = parsed.tree;
+  if(!t || typeof t !== "object" || t.kind !== "root") throw new Error(notOurs);
+  const fixes = [];
+  const st = Object.assign(defaultState(), JSON.parse(JSON.stringify(parsed)));
+
+  // --- дерево категорий ---
+  let badNodes = 0, badValues = 0;
+  const seen = new Set();
+  (function walk(n){
+    if(typeof n.uid !== "string" || !n.uid || seen.has(n.uid)) n.uid = n.kind === "root" ? "root" : freshUid();
+    seen.add(n.uid);
+    if(typeof n.name !== "string" || !n.name.trim()) n.name = n.kind === "root" ? "Зарплата" : "Без названия";
+    if(n.kind === "pct" || n.kind === "fixed"){
+      const v = Number(n.value);
+      if(!isFinite(v) || v < 0 || n.value === null || n.value === ""){ n.value = 0; badValues++; }
+      else n.value = v;
+      delete n.children;
+      return;
+    }
+    if(n.kind === "base" && n.value != null){
+      const v = Number(n.value);
+      if(!isFinite(v) || v < 0){ n.value = null; badValues++; } else n.value = v;
+    }
+    const kids = Array.isArray(n.children) ? n.children : [];
+    n.children = kids.filter(ch => {
+      const ok = ch && typeof ch === "object" && !Array.isArray(ch) && ["base","pct","fixed"].includes(ch.kind);
+      if(!ok) badNodes++;
+      return ok;
+    });
+    n.children.forEach(walk);
+  })(st.tree);
+  const catCount = flatten(st.tree).filter(n => n.kind === "pct" || n.kind === "fixed").length;
+  if(!catCount) throw new Error("В файле нет ни одной категории — это не похоже на резервную копию.");
+  if(badNodes) fixes.push(`пропущено повреждённых категорий: ${badNodes}`);
+  if(badValues) fixes.push(`некорректных значений категорий заменено на 0: ${badValues}`);
+
+  // --- доходы ---
+  if(!Array.isArray(st.incomes)){
+    if(parsed.incomes !== undefined) fixes.push("список доходов повреждён и не загружен");
+    st.incomes = [];
+  }
+  let badInc = 0, negInc = 0;
+  const ids = new Set();
+  st.incomes = st.incomes.filter(i => {
+    if(!i || typeof i !== "object" || !isIsoDate(i.date) || !isFinite(Number(i.amount)) || i.amount === null || i.amount === ""){ badInc++; return false; }
+    i.amount = Number(i.amount);
+    if(i.amount < 0){ i.amount = 0; negInc++; }
+    if(typeof i.id !== "string" || !i.id || ids.has(i.id)) i.id = freshUid();
+    ids.add(i.id);
+    i.comment = typeof i.comment === "string" ? i.comment : "";
+    return true;
+  });
+  if(badInc) fixes.push(`пропущено повреждённых записей о доходах: ${badInc}`);
+  if(negInc) fixes.push(`отрицательных сумм доходов заменено на 0: ${negInc}`);
+
+  // --- цель на месяц ---
+  const g = Number(st.monthGoal);
+  if(st.monthGoal === null || st.monthGoal === "" || !isFinite(g) || g < 0){
+    st.monthGoal = 85000;
+    fixes.push("цель на месяц была некорректной — установлено 85 000 ₽");
+  } else if(g < 1000){
+    // Минимум цели — 1 000 ₽ (MIN_GOAL; константа объявлена ниже, здесь — число:
+    // normalizeState() вызывается из load() раньше её объявления).
+    st.monthGoal = 1000;
+    fixes.push("цель на месяц была меньше 1 000 ₽ — установлено 1 000 ₽");
+  } else st.monthGoal = g;
+
+  // --- прочее ---
+  if(!st.calCheck || typeof st.calCheck !== "object" || Array.isArray(st.calCheck)) st.calCheck = {};
+  if(!st.ui || typeof st.ui !== "object" || Array.isArray(st.ui)) st.ui = { theme: "dark" };
+  st.hideDebtNotice = !!st.hideDebtNotice;
+  migrateTree(st.tree);
+  return { st, fixes };
 }
+
+// Повреждённые данные НЕ затираются молча: исходная строка сохраняется
+// отдельным ключом (STORAGE_KEY + "_broken_<время>"), иначе первое же
+// сохранение перезаписало бы её навсегда.
+// Хранится не больше MAX_BROKEN_COPIES последних копий — старые удаляются,
+// чтобы не забить хранилище браузера.
+function keepBrokenCopy(raw){
+  try{
+    const prefix = STORAGE_KEY + "_broken_";
+    const old = [];
+    for(let i = 0; i < localStorage.length; i++){
+      const k = localStorage.key(i);
+      if(k && k.indexOf(prefix) === 0) old.push(k);
+    }
+    // Та же самая испорченная строка уже сохранена — второй раз не копируем
+    if(old.some(k => localStorage.getItem(k) === raw)) return true;
+    old.sort((a, b) => Number(a.slice(prefix.length)) - Number(b.slice(prefix.length)));
+    while(old.length >= MAX_BROKEN_COPIES) localStorage.removeItem(old.shift());
+    localStorage.setItem(prefix + Date.now(), raw);
+    return true;
+  }catch(e){ return false; }
+}
+function load(){
+  let raw = null;
+  try{ raw = localStorage.getItem(STORAGE_KEY); }
+  catch(e){
+    loadNotices.push({ type: "err", msg: "Хранилище браузера недоступно — данные не будут сохраняться (например, в приватном режиме)." });
+    return defaultState();
+  }
+  if(!raw) return defaultState();
+  try{
+    const { st, fixes } = normalizeState(JSON.parse(raw));
+    if(fixes.length){
+      // Перезаписываем исправленным, только если исходник точно сохранён в копию
+      if(keepBrokenCopy(raw)) persistAfterLoad = true;
+      loadNotices.push({ type: "warn", msg: "Сохранённые данные были частично повреждены и исправлены: " + fixes.join("; ") + ". Копия исходных данных сохранена в браузере." });
+    }
+    return st;
+  }catch(e){
+    const kept = keepBrokenCopy(raw);
+    if(kept) persistAfterLoad = true;
+    loadNotices.push({ type: "err", msg: "Сохранённые данные повреждены — открыт новый план. " + (kept ? "Копия повреждённых данных сохранена в браузере. " : "") + "Восстановите данные из резервной копии: Настройки → Импорт JSON." });
+    return defaultState();
+  }
+}
+
+let state = load();
 
 // Автосохранение после каждого изменения
 function cleanTree(n){
   const c = {};
   for(const k in n){
-    if(k === "amount" || k === "viewAmount" || k === "pctOfSalary" || k === "_depth" || k === "childBase" || k === "_income" || k === "_fixedWarnings") continue;
+    if(k === "amount" || k === "viewAmount" || k === "pctOfSalary" || k === "_depth" || k === "childBase" || k === "_income" || k === "_calc" || k === "_fixedWarnings") continue;
     c[k] = n[k];
   }
   if(Array.isArray(n.children)) c.children = n.children.map(cleanTree);
@@ -494,7 +638,16 @@ function cleanTree(n){
 
 // Чистое дерево для LocalStorage/экспорта (без вычисленных полей).
 function snapState(){ return {...state, tree: cleanTree(state.tree)}; }
-function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(snapState())); render(); }
+// Возвращает true, если данные записаны. Уведомления об успехе («Доход
+// добавлен» и т.п.) показываем только тогда — иначе они противоречили бы
+// сообщению об ошибке сохранения.
+function save(){
+  let ok = true;
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(snapState())); }
+  catch(e){ ok = false; toast("Не удалось сохранить данные: хранилище браузера недоступно или переполнено. Сделайте «Экспорт JSON», чтобы не потерять изменения.", "err"); }
+  render();
+  return ok;
+}
 
 /* ---------- форматирование ---------- */
 function n2(v){ return (isFinite(v) && v!==null) ? v : 0; }
@@ -506,7 +659,16 @@ function fmt(n){
   if(n % 1 === 0) return n.toLocaleString('ru-RU', {maximumFractionDigits:0}) + " ₽";
   return n.toLocaleString('ru-RU', {minimumFractionDigits:2, maximumFractionDigits:2}) + " ₽";
 }
-function pctFmt(p){ return Math.round(n2(p)*10)/10 + "%"; }
+// Сегодняшняя дата по местному времени (toISOString() — в UTC: ночью был бы вчерашний день).
+function todayISO(){
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+}
+// Проценты по-русски, с запятой, как и рубли в fmt(): 27,4%. digits — знаков после запятой.
+function pctFmt(p, digits){
+  const d = digits == null ? 1 : digits;
+  return n2(p).toLocaleString('ru-RU', {maximumFractionDigits: d}) + "%";
+}
 function esc(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
 /* Бегущая строка: дублируем текст, анимация сдвига на -50%.
@@ -515,290 +677,214 @@ function mq(html){
   return `<div class="marquee"><div class="marquee-track"><span>${html}</span><span>${html}</span></div></div>`;
 }
 
-/* ---------- РАСЧЁТ ДЕРЕВА ----------
-   Основание — доход за месяц/выбранное пополнение (getSelectedIncome()),
-   или state.salary, если доходов ещё нет. node.amount — канонический расчёт
-   за месяц (читают Настройки), node.viewAmount — то, что видно на главной.
+/* ---------- РАСЧЁТ ----------
+   Всё считается в копейках (целые числа) — суммы всегда сходятся до копейки.
 
-   Категории-исключения (baseException=true, режим «Пополнение» в Настройках)
-   считаются отдельно по каждому пополнению и складываются, а не от общей базы.
+   1) План на цель — planTree(root, цель): водопад по дереву от «Цели на
+      месяц» (state.monthGoal). В каждом контейнере % категории считаются от
+      бюджета контейнера, фикс — своей суммой, остальное уходит в контейнер-
+      остаток. Если % и фикс-суммы уровня вместе больше бюджета — все суммы
+      уровня урезаются пропорционально, без приоритетов («На жизнь» — обычная
+      категория, может быть хоть 0). Если остатка у уровня нет, а распределено
+      меньше бюджета — недостающее добирается пропорционально %-категориям.
+      Сумма по листьям = месячная цель каждой категории.
 
-   Защита «На жизнь»: если фикс-категории контейнера просят больше 70%
-   основания — используется не больше 50%, остальное уходит другим. На шаге
-   накопительного расчёта по пополнениям (entryCtx, см. computeTree()) порог
-   считается от накопленного итога месяца, а урезание — 50% именно от текущей
-   выплаты; недостающее переносится на следующие пополнения, а как только
-   накопленный итог становится комфортным — доплачивается остаток без
-   ограничения.
+   2) Пополнения месяца — allocateMonth(), строго по порядку внесения:
+      - пока доход месяца не достиг цели: пополнение делится ПОРОВНУ между
+        категориями, которые ещё не набрали свою месячную цель; набравшая
+        выбывает, её долю получают остальные;
+      - всё, что сверх цели, — по процентам из настроек: итог месяца
+        становится водопадом от фактической суммы (planTree(доход месяца)),
+        фикс-категории к этому моменту уже заполнены.
+      Доля пополнения №k зависит только от пополнений 1..k — новые доходы
+      не пересчитывают уже распределённые. */
+function toK(v){ return Math.round(n2(v) * 100); }
+function sumArr(a){ return a.reduce((s,x) => s + x, 0); }
 
-   balanceKidsPure()/balanceKidsPureEntry() ниже: после фикс-категорий сумма
-   %/base-с-% детей всегда довыравнивается под бюджет контейнера (даже без
-   своего контейнера-остатка, напр. «Свободный остаток»). Категории-
-   исключения (overrides) в этом выравнивании не участвуют. */
-function collectExceptionUids(node, set){
-  set = set || new Set();
-  if((node.kind === "pct" || node.kind === "fixed") && node.baseException) set.add(node.uid);
-  (node.children||[]).forEach(ch => collectExceptionUids(ch, set));
-  return set;
+// Делит total копеек пропорционально весам (метод наибольших остатков).
+// Все веса нулевые — поровну. Результат — целые копейки, сумма ровно total.
+function apportionK(total, weights){
+  const n = weights.length;
+  const res = new Array(n).fill(0);
+  if(!n || total <= 0) return res;
+  let w = weights.map(x => Math.max(0, n2(x)));
+  let sw = sumArr(w);
+  if(sw <= 0){ w = w.map(() => 1); sw = n; }
+  let used = 0;
+  const fr = w.map((x, i) => {
+    const exact = total * x / sw;
+    const f = Math.floor(exact + 1e-9);
+    res[i] = f; used += f;
+    return { i, r: exact - f };
+  });
+  fr.sort((a, b) => b.r - a.r || a.i - b.i);
+  for(let j = 0; j < total - used; j++) res[fr[j % n].i]++;
+  return res;
 }
 
-// Чистый расчёт: заполняет out (Map uid -> сумма). overrides — принудительные
-// суммы категорий-исключений (или null). warnList — куда добавлять события
-// урезания фикс-сумм (или null). entryCtx — {priorMap, entryAmount} только
-// для шага накопительного расчёта (см. computeTree()); без него — обычный режим.
-function calcAmounts(node, base, overrides, out, warnList, entryCtx){
-  if(node.kind === "pct"){
-    const forced = overrides && Object.prototype.hasOwnProperty.call(overrides, node.uid);
-    const amt = forced ? round2(overrides[node.uid]) : round2(base * (n2(node.value)/100));
-    out.set(node.uid, amt);
-    return amt;
-  }
-  // контейнер (root / base): считаем его бюджет в копейках
-  const baseAmt = (node.value != null && node.kind === "base") ? round2(base * (n2(node.value)/100)) : round2(base);
-  out.set(node.uid, baseAmt);
-
+// Водопад: заполняет out (uid -> копейки) для каждого узла от бюджета B.
+function planTree(node, B, out){
+  out.set(node.uid, B);
   const kids = node.children || [];
-  const fixedKids = kids.filter(ch => ch.kind === "fixed");
-  const pctKids   = kids.filter(ch => ch.kind === "pct");
+  if(!kids.length) return out;
+  const rem = kids.find(ch => ch.kind === "base" && ch.value == null);
+  const parts = kids.filter(ch => ch !== rem);
+  const claims = parts.map(ch => ch.kind === "fixed"
+    ? Math.max(0, n2(ch.value)) * 100
+    : B * Math.max(0, n2(ch.value)) / 100);
+  const claimSum = sumArr(claims);
+  let alloc;
+  if(claimSum > B || (!rem && parts.length)){
+    let w = claims;
+    if(claimSum < B){
+      // Уровень без остатка недогружен — добираем пропорционально %-категориям
+      // (если их нет — всем категориям уровня).
+      const pctW = parts.map((ch, i) => ch.kind === "fixed" ? 0 : claims[i]);
+      const extraW = sumArr(pctW) > 0 ? pctW : claims;
+      const ew = sumArr(extraW);
+      const left = B - claimSum;
+      w = claims.map((c, i) => c + (ew > 0 ? left * extraW[i] / ew : left / parts.length));
+    }
+    alloc = apportionK(B, w);
+  } else {
+    alloc = claims.map(c => Math.round(c));
+    if(sumArr(alloc) > B) alloc = apportionK(B, claims);
+  }
+  let used = 0;
+  parts.forEach((ch, i) => { used += alloc[i]; planTree(ch, alloc[i], out); });
+  if(rem) planTree(rem, Math.max(0, B - used), out);
+  return out;
+}
 
-  let sumKids = 0;
+// Листья распределения: категории (и пустые контейнеры — чтобы деньги не терялись).
+function allocLeaves(root){
+  return flatten(root).filter(n => n !== root && !(n.children && n.children.length));
+}
 
-  // --- фикс-категории считаем группой: нужно видеть их общую сумму сразу ---
-  const overrideFixed = [], plainFixed = [];
-  fixedKids.forEach(ch => {
-    if(overrides && Object.prototype.hasOwnProperty.call(overrides, ch.uid)) overrideFixed.push(ch);
-    else plainFixed.push(ch);
-  });
-  overrideFixed.forEach(ch => {
-    const amt = round2(overrides[ch.uid]);
-    out.set(ch.uid, amt);
-    sumKids += amt;
-  });
-  if(plainFixed.length){
-    const nominal = round2(plainFixed.reduce((s,ch) => s + n2(ch.value), 0));
-    // Защита «На жизнь» — см. комментарий к calcAmounts() выше (режимы 1 и 2).
-    const comfortable = baseAmt > 0 && nominal <= round2(baseAmt*0.7) + 1e-9;
-    const idealTarget = baseAmt <= 0 ? 0 : (comfortable ? nominal : round2(baseAmt*0.5));
-    let target;
-    if(!entryCtx){
-      target = idealTarget;
+// Равномерное заполнение: X копеек поровну между категориями со свободным
+// местом (rooms); заполненная выбывает. Возвращает {got, left}.
+function waterfillK(rooms, X){
+  const got = rooms.map(() => 0);
+  let active = rooms.map((_, i) => i).filter(i => rooms[i] > 0);
+  while(X > 0 && active.length){
+    const m = active.length;
+    const minRoom = Math.min(...active.map(i => rooms[i] - got[i]));
+    if(minRoom * m <= X){
+      active.forEach(i => { got[i] += minRoom; });
+      X -= minRoom * m;
+      active = active.filter(i => rooms[i] - got[i] > 0);
     } else {
-      const priorSum = plainFixed.reduce((s,ch) => s + n2(entryCtx.priorMap.get(ch.uid)), 0);
-      // Вклад именно этой выплаты в бюджет именно этого контейнера (на
-      // вложенных уровнях до него доходит только часть выплаты).
-      const priorBase = n2(entryCtx.priorMap.get(node.uid));
-      const entryDelta = Math.max(0, round2(baseAmt - priorBase));
-      // Резервируем долю соседних % категорий в этом вкладе — иначе фикс-
-      // категории могли бы забрать чужую долю и увести остаток в минус.
-      const isOverride = ch => overrides && Object.prototype.hasOwnProperty.call(overrides, ch.uid);
-      const siblingPct = pctKids.filter(ch => !isOverride(ch)).reduce((s,ch)=>s+n2(ch.value),0)
-        + kids.filter(ch => ch.kind==="base" && ch.value!=null && !isOverride(ch)).reduce((s,ch)=>s+n2(ch.value),0);
-      const fixedEntryDelta = Math.max(0, round2(entryDelta * (1 - siblingPct/100)));
-      const gap = Math.max(0, round2(idealTarget - priorSum));
-      // Потолок 50% — от ВСЕЙ выплаты (entryDelta), а не от fixedEntryDelta:
-      // idealTarget считается от полного baseAmt, и сумма потолков по всем
-      // пополнениям должна сходиться к idealTarget, а не к его части.
-      // fixedEntryDelta остаётся только как страховка ниже (от минуса).
-      const raw = comfortable ? gap : Math.min(gap, round2(entryDelta*0.5));
-      target = round2(priorSum + Math.min(raw, fixedEntryDelta));
-    }
-    if(target + 1e-9 < nominal){
-      plainFixed.forEach(ch => {
-        const share = round2(target * (n2(ch.value)/nominal));
-        out.set(ch.uid, share);
-        sumKids += share;
-      });
-      if(warnList) warnList.push({ containerUid: node.uid, names: plainFixed.map(c=>c.name), nominal, base: baseAmt, cap: target, kind: "shortfall", comfortOnly: nominal <= baseAmt + 1e-9 });
-    } else {
-      // Фикс-суммы в пределах комфортной зоны — используем их ПОЛНОСТЬЮ, без урезания.
-      plainFixed.forEach(ch => {
-        const amt = round2(n2(ch.value));
-        out.set(ch.uid, amt);
-        sumKids += amt;
-      });
+      const q = Math.floor(X / m);
+      let r = X - q * m;
+      active.forEach(i => { got[i] += q + (r > 0 ? 1 : 0); if(r > 0) r--; });
+      X = 0;
     }
   }
-
-  // --- процентные категории ---
-  pctKids.forEach(ch => { sumKids += calcAmounts(ch, baseAmt, overrides, out, warnList, entryCtx); });
-
-  // base-дети с явным процентом
-  kids.forEach(ch => { if(ch.kind === "base" && ch.value != null) sumKids += calcAmounts(ch, baseAmt, overrides, out, warnList, entryCtx); });
-  // base-ребёнок без процента — получает ровно остаток
-  const remChild = kids.find(ch => ch.kind === "base" && ch.value == null);
-  if(remChild){
-    const rem = Math.max(0, round2(baseAmt - sumKids));
-    sumKids += calcAmounts(remChild, rem, overrides, out, warnList, entryCtx);
-  }
-  // Довыравниваем %/base-с-% детей под бюджет контейнера (копейки округления,
-  // или контейнер без остатка — см. комментарий к calcAmounts() выше). На шаге
-  // накопительного расчёта — отдельная версия с защитой от минуса (см.
-  // balanceKidsPureEntry() ниже): категория-исключение в контейнере без
-  // остатка может расти непропорционально бюджету, и обычное урезание
-  // соседей могло бы на одном шаге дать им меньше,
-  // чем было на предыдущем — то есть отрицательную долю у этого пополнения.
-  if(sumKids > 0){
-    if(entryCtx) balanceKidsPureEntry(node, baseAmt, sumKids, out, overrides, entryCtx);
-    else balanceKidsPure(node, baseAmt, sumKids, out, overrides);
-  }
-  return baseAmt;
+  return { got, left: X };
 }
 
-// Как balanceKidsPure(), но для шага накопительного расчёта: значение части
-// не опускается ниже предыдущего шага (иначе доля была бы отрицательной).
-function balanceKidsPureEntry(parent, target, sum, out, overrides, entryCtx){
-  const diffK = Math.round(target*100) - Math.round(sum*100);
-  if(diffK === 0) return;
-  const parts = (parent.children||[]).filter(ch =>
-    (ch.kind==="pct" || (ch.kind==="base" && ch.value != null)) &&
-    !(overrides && Object.prototype.hasOwnProperty.call(overrides, ch.uid))
-  );
-  if(!parts.length) return;
-  const partsSum = parts.reduce((s,p) => s + n2(out.get(p.uid)), 0);
-  const otherSum = round2(sum - partsSum);
-  const partsTarget = Math.max(0, round2(target - otherSum));
-  const scale = partsSum > 0 ? partsTarget/partsSum : 0;
-  parts.forEach(p => {
-    const natural = round2(n2(out.get(p.uid)) * scale);
-    const prior = n2(entryCtx.priorMap.get(p.uid));
-    out.set(p.uid, Math.max(natural, prior));
+// Копеечные «минусы» от округления (сверх цели) — забираем у самой крупной доли.
+function fixNegativesK(d){
+  let deficit = 0;
+  d.forEach((v, i) => { if(v < 0){ deficit -= v; d[i] = 0; } });
+  while(deficit > 0){
+    let j = -1;
+    d.forEach((v, i) => { if(v > 0 && (j < 0 || v > d[j])) j = i; });
+    if(j < 0) break;
+    const take = Math.min(deficit, d[j]);
+    d[j] -= take; deficit -= take;
+  }
+  return d;
+}
+
+// Распределение пополнений месяца (см. комментарий выше). Всё в копейках.
+function allocateMonth(root, entries, goalK){
+  const leafs = allocLeaves(root);
+  const planGoal = planTree(root, goalK, new Map());
+  const targets = leafs.map(l => n2(planGoal.get(l.uid)));
+  let S = leafs.map(() => 0);   // накоплено по категориям за месяц
+  let T = 0;                    // доход месяца нарастающим итогом
+  const steps = [];
+  entries.forEach(e => {
+    const I = toK(Math.max(0, n2(e.amount)));
+    const delta = leafs.map(() => 0);
+    const fillPart = Math.min(I, Math.max(0, goalK - T));
+    let left = 0;
+    if(fillPart > 0){
+      const wf = waterfillK(targets.map((t, i) => Math.max(0, t - S[i])), fillPart);
+      wf.got.forEach((g, i) => { delta[i] += g; });
+      left = wf.left;
+    }
+    T += I;
+    const extra = I - fillPart + left;
+    if(extra > 0){
+      const desired = planTree(root, T, new Map());
+      const d = leafs.map((l, i) => n2(desired.get(l.uid)) - S[i] - delta[i]);
+      fixNegativesK(d);
+      d.forEach((v, i) => { delta[i] += v; });
+    }
+    S = S.map((s, i) => s + delta[i]);
+    steps.push({ entry: e, delta });
   });
+  return { leafs, targets, total: S, steps, totalK: T, goalK };
 }
 
-// Выравнивает сумму детей контейнера ровно в target. Копеечная разница —
-// докручивает по кругу; большая (контейнер без остатка перегружен/недогружен)
-// — пропорционально масштабирует «части», без цикла (O(1), не уходя в минус).
-// overrides-категории (исключения) в «части» не входят — их трогать нельзя.
-function balanceKidsPure(parent, target, sum, out, overrides){
-  const diffK = Math.round(target*100) - Math.round(sum*100);
-  if(diffK === 0) return;
-  const parts = (parent.children||[]).filter(ch =>
-    (ch.kind==="pct" || (ch.kind==="base" && ch.value != null)) &&
-    !(overrides && Object.prototype.hasOwnProperty.call(overrides, ch.uid))
-  );
-  if(!parts.length) return;
-  if(Math.abs(diffK) <= 200){ // не больше ~2 ₽ — это копеечное округление
-    const sign = diffK > 0 ? 1 : -1;
-    const n = Math.abs(diffK);
-    for(let i=0; i<n; i++){
-      const part = parts[i % parts.length];
-      out.set(part.uid, round2(n2(out.get(part.uid)) + sign*0.01));
-    }
-    return;
-  }
-  const partsSum = parts.reduce((s,p) => s + n2(out.get(p.uid)), 0);
-  const otherSum = round2(sum - partsSum); // прочие дети контейнера (фикс-категории), уже посчитаны в out
-  const partsTarget = Math.max(0, round2(target - otherSum));
-  const scale = partsSum > 0 ? partsTarget/partsSum : 0;
-  parts.forEach(p => out.set(p.uid, round2(n2(out.get(p.uid)) * scale)));
-}
-
-// applyAmounts -> node.amount (канонический, за месяц). applyViewAmounts ->
-// node.viewAmount (что видно на главной).
+// node.amount — план на цель месяца (читают Настройки).
 function applyAmounts(node, map){
-  node.amount = round2(n2(map.get(node.uid)));
+  node.amount = n2(map.get(node.uid)) / 100;
   (node.children||[]).forEach(ch => applyAmounts(ch, map));
 }
-function applyViewAmounts(node, map){
-  node.viewAmount = round2(n2(map.get(node.uid)));
-  (node.children||[]).forEach(ch => applyViewAmounts(ch, map));
+// node.viewAmount — то, что видно на главной: листья из leafK, контейнеры — сумма детей.
+function applyViewK(node, leafK){
+  let k;
+  if(leafK.has(node.uid)) k = leafK.get(node.uid);
+  else k = (node.children||[]).reduce((s, ch) => s + applyViewK(ch, leafK), 0);
+  node.viewAmount = k / 100;
+  return k;
 }
+
+const LIFE_UID = "b5";
+const MIN_GOAL = 1000; // цель на месяц не может быть меньше (0 — запрещён)
+const LIFE_MIN = 10000; // ниже — показываем рекомендацию увеличить «На жизнь»
 
 function computeTree(){
   const root = state.tree;
   const inc = getSelectedIncome();
-  // node.amount всегда считается от суммы за месяц целиком (или от state.salary,
-  // если доходов ещё нет) — независимо от того, что выбрано на главной.
-  const monthBase = round2(n2(inc.selectedEntry ? inc.monthTotal : inc.total));
+  const goalK = toK(Math.max(0, n2(state.monthGoal)));
+  applyAmounts(root, planTree(root, goalK, new Map()));
 
-  const exceptionUids = collectExceptionUids(root);
-  // Теневой расчёт каждого пополнения по отдельности (как единственный доход
-  // месяца) — для категорий-исключений и как основа накопительного расчёта ниже.
-  const entryShadows = inc.entries.map(e => {
-    const shadowMap = new Map();
-    const shadowWarn = [];
-    calcAmounts(root, round2(n2(e.amount)), null, shadowMap, shadowWarn);
-    return { entry: e, map: shadowMap, warn: shadowWarn };
-  });
+  const calc = allocateMonth(root, inc.entries, goalK);
+  const toMap = arr => new Map(calc.leafs.map((l, i) => [l.uid, arr[i]]));
+  let viewArr;
+  if(!state.incomes.length) viewArr = calc.targets;           // доходов нет — план на цель
+  else if(inc.selectedEntry){
+    const st = calc.steps.find(s => s.entry.id === inc.selectedEntry.id);
+    viewArr = st ? st.delta : calc.leafs.map(() => 0);
+  } else viewArr = calc.total;
+  applyViewK(root, toMap(viewArr));
 
-  // aggOverrides — сумма исключений по всем пополнениям (-> node.amount).
-  // entryOverrides — сумма только по выбранному пополнению (-> viewAmount).
-  let aggOverrides = null, entryOverrides = null;
-  const entryWarnings = [];
-  if(exceptionUids.size && entryShadows.length){
-    aggOverrides = {};
-    if(inc.selectedEntry) entryOverrides = {};
-    entryShadows.forEach(({entry: e, map: shadow, warn: warns}) => {
-      warns.forEach(w => entryWarnings.push(Object.assign({ scope: "entry", entryId: e.id, entryDate: e.date, entryComment: e.comment || "" }, w)));
-      exceptionUids.forEach(uid => {
-        aggOverrides[uid] = round2(n2(aggOverrides[uid]) + n2(shadow.get(uid)));
-        if(entryOverrides && e.id === inc.selectedEntry.id){
-          entryOverrides[uid] = round2(n2(shadow.get(uid)));
-        }
-      });
-    });
+  // «На жизнь» за месяц: пока цель не достигнута — сколько будет по плану,
+  // после — сколько уже есть по факту.
+  const lifeIdx = calc.leafs.findIndex(l => l.uid === LIFE_UID);
+  let lifeK = null;
+  if(lifeIdx >= 0){
+    lifeK = calc.totalK >= goalK ? calc.total[lifeIdx] : calc.targets[lifeIdx];
   }
 
-  // Канонический расчёт месяца (node.amount, читают Настройки).
-  const mainMap = new Map();
-  const monthWarnings = [];
-  // Предупреждения собираем только если в месяце реально есть пополнения —
-  // иначе для пустого месяца (0 ₽) выйдет обманчивое «не хватает денег».
-  calcAmounts(root, monthBase, aggOverrides, mainMap, inc.entries.length ? monthWarnings : null);
-  applyAmounts(root, mainMap);
-
-  // Отображение на главной для выбранного пополнения: накопительный расчёт
-  // по порядку добавления (не пропорциональное масштабирование — иначе уже
-  // показанные/переведённые суммы менялись бы задним числом при новых
-  // доходах): доля №N = водопад(сумма 1..N) − водопад(сумма 1..N-1). Сумма
-  // долей всегда точно равна месячному плану (mainMap). Категории-исключения
-  // в эту логику не входят — их доля берётся из entryOverrides отдельно.
-  let viewMap = mainMap;
-  let selectedStepWarnings = [];
-  if(inc.selectedEntry && entryShadows.length){
-    let cumTotal = 0;
-    let cumAggOverrides = exceptionUids.size ? {} : null;
-    let prevStepMap = new Map();
-    for(const {entry: e, map: shadow} of entryShadows){
-      cumTotal = round2(cumTotal + n2(e.amount));
-      if(cumAggOverrides){
-        exceptionUids.forEach(uid => { cumAggOverrides[uid] = round2(n2(cumAggOverrides[uid]) + n2(shadow.get(uid))); });
-      }
-      const stepMap = new Map();
-      const stepWarn = [];
-      calcAmounts(root, cumTotal, cumAggOverrides, stepMap, stepWarn, { priorMap: prevStepMap, entryAmount: n2(e.amount) });
-      if(e.id === inc.selectedEntry.id){
-        const deltaMap = new Map();
-        flatten(root).forEach(n => {
-          deltaMap.set(n.uid, round2(n2(stepMap.get(n.uid)) - n2(prevStepMap.get(n.uid))));
-        });
-        exceptionUids.forEach(uid => {
-          if(entryOverrides && Object.prototype.hasOwnProperty.call(entryOverrides, uid)) deltaMap.set(uid, round2(entryOverrides[uid]));
-        });
-        viewMap = deltaMap;
-        selectedStepWarnings = stepWarn.map(w => Object.assign({ scope: "entry", cumulative: true, entryId: e.id, entryDate: e.date, entryComment: e.comment || "" }, w));
-        break;
-      }
-      prevStepMap = stepMap;
-    }
-  }
-  applyViewAmounts(root, viewMap);
-
-  // Месячные предупреждения — всегда; по пополнению — только для выбранного.
-  const visibleEntryWarnings = inc.selectedEntry
-    ? entryWarnings.filter(w => w.entryId === inc.selectedEntry.id).concat(selectedStepWarnings)
-    : entryWarnings;
-  const visibleWarnings = monthWarnings.map(w => Object.assign({ scope: "month" }, w)).concat(visibleEntryWarnings);
-
-  // Проценты считаем от viewAmount (то, что реально просматривается).
   const viewRootAmt = n2(root.viewAmount);
   (function setPct(n){
-    (n.children||[]).forEach(ch=>{ setPct(ch); });
-    n.pctOfSalary = viewRootAmt>0 ? (n2(n.viewAmount)/viewRootAmt)*100 : 0;
+    (n.children||[]).forEach(ch => { setPct(ch); });
+    n.pctOfSalary = viewRootAmt > 0 ? (n2(n.viewAmount)/viewRootAmt)*100 : 0;
   })(root);
   root._income = inc;
-  root._fixedWarnings = visibleWarnings;
+  root._calc = { goalK, monthK: calc.totalK, lifeK, lifeName: lifeIdx >= 0 ? calc.leafs[lifeIdx].name : "" };
   return root;
+}
+
+// Рекомендация по «На жизнь» (или "" — если всё в порядке).
+function lifeHintHTML(lifeK, name, where){
+  if(lifeK == null || lifeK >= LIFE_MIN * 100) return "";
+  return `<div class="lvl-note warn" style="margin-top:8px;">💡 «${esc(name)}» ${where} — ${fmt(lifeK/100)}, это меньше ${fmt(LIFE_MIN)}. Рекомендуем увеличить эту категорию, чтобы на повседневные расходы не приходилось брать деньги из других категорий.</div>`;
 }
 
 /* ---------- выбор месяца/года на главной ----------
@@ -836,7 +922,8 @@ function latestIncome(){
     if(!i || !i.date) return;
     const d = new Date(i.date + "T00:00:00");
     if(isNaN(d)) return;
-    if(!best || d.getTime() > new Date(best.date + "T00:00:00").getTime()) best = i;
+    // >= — при одинаковой дате «последний» = добавленный позже
+    if(!best || d.getTime() >= new Date(best.date + "T00:00:00").getTime()) best = i;
   });
   return best;
 }
@@ -875,7 +962,7 @@ function resolveIncomeSelection(entries){
 // total — основание для расчёта (сумма месяца или одно пополнение).
 function getSelectedIncome(){
   const lp = lastIncomePeriod();
-  if(!lp){ return { month: null, year: null, total: round2(state.salary), monthTotal: 0, entries: [], selectedEntry: null }; }
+  if(!lp){ return { month: null, year: null, total: round2(Math.max(0, n2(state.monthGoal))), monthTotal: 0, entries: [], selectedEntry: null }; }
   // при первом обращении берём месяц последней записи
   if(selMonth === null){ selMonth = lp.month; selYear = lp.year; }
   const entries = incomeEntriesByPeriod(selMonth, selYear);
@@ -886,10 +973,12 @@ function getSelectedIncome(){
 }
 
 // Процент с ОДНИМ знаком: 12 → "12%", 30.4 → "30.4%"
-function pct1(p){
-  const v = Math.round(n2(p)*10)/10;
-  return (Number.isInteger(v) ? v : v.toFixed(1)) + "%";
+// Дата коротко: 2026-10-22 → 22.10.2026
+function dateShort(iso){
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ""));
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : String(iso || "");
 }
+function pct1(p){ return pctFmt(p, 1); }
 
 // Русские названия месяцев (для заголовка и подписи)
 const MONTHS_GEN = ["","января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
@@ -965,6 +1054,91 @@ function freshUid(){
   return "c" + (uidSeq++) + "_" + Math.random().toString(36).slice(2,7);
 }
 
+/* ---------- уведомления ----------
+   Сообщения в ответ на действие (запрет, ошибка, результат импорта)
+   показываем всплывающим уведомлением сверху — не прокручивая страницу.
+   Закрыть: ✕, смахнуть вбок или подождать. type: "err" | "warn" | "ok". */
+const TOAST_MS = 7000;
+function toast(msg, type){
+  type = type || "err";
+  const box = document.getElementById("toasts");
+  if(!box) return;
+  // Одинаковое сообщение не дублируем — показываем заново
+  [...box.children].forEach(el => { if(el.dataset.msg === msg) el.remove(); });
+  while(box.children.length >= 3) box.firstElementChild.remove();
+  const el = document.createElement("div");
+  el.className = "toast " + type;
+  el.dataset.msg = msg;
+  el.setAttribute("role", type === "ok" ? "status" : "alert");
+  const ic = document.createElement("span"); ic.className = "t-ic"; ic.textContent = type === "ok" ? "✓" : type === "warn" ? "💡" : "⚠";
+  const txt = document.createElement("span"); txt.className = "t-txt"; txt.textContent = msg;
+  const x = document.createElement("button"); x.type = "button"; x.className = "t-x"; x.setAttribute("aria-label", "Закрыть"); x.textContent = "✕";
+  el.append(ic, txt, x);
+  box.appendChild(el);
+
+  let timer = null;
+  const close = (dir) => {
+    clearTimeout(timer);
+    el.style.transform = dir ? `translateX(${dir * 120}%)` : "translateY(-10px)";
+    el.style.opacity = "0";
+    setTimeout(() => el.remove(), 200);
+  };
+  const arm = () => { clearTimeout(timer); timer = setTimeout(() => close(0), TOAST_MS); };
+  x.addEventListener("click", () => close(0));
+  arm();
+
+  // Смахивание вбок (палец или мышь)
+  let startX = null, dx = 0;
+  el.addEventListener("pointerdown", e => {
+    if(e.target === x) return;
+    startX = e.clientX; dx = 0;
+    el.classList.add("dragging");
+    el.setPointerCapture(e.pointerId);
+    clearTimeout(timer);
+  });
+  el.addEventListener("pointermove", e => {
+    if(startX === null) return;
+    dx = e.clientX - startX;
+    el.style.transform = `translateX(${dx}px)`;
+    el.style.opacity = String(Math.max(0.2, 1 - Math.abs(dx) / 240));
+  });
+  const end = () => {
+    if(startX === null) return;
+    startX = null;
+    el.classList.remove("dragging");
+    if(Math.abs(dx) > 70) close(dx > 0 ? 1 : -1);
+    else { el.style.transform = ""; el.style.opacity = ""; arm(); }
+  };
+  el.addEventListener("pointerup", end);
+  el.addEventListener("pointercancel", end);
+}
+
+/* ---------- окно подтверждения ----------
+   confirmDialog({title, html, okText}, onOk): «Отмена» / кнопка действия.
+   Закрывается без действия по «Отмена», тапу по фону или Esc. */
+function confirmDialog(opts, onOk){
+  document.querySelector(".modal-back")?.remove();
+  const back = document.createElement("div");
+  back.className = "modal-back";
+  back.innerHTML = `
+    <div class="modal" role="dialog" aria-modal="true">
+      <h3>${esc(opts.title || "Подтвердите действие")}</h3>
+      <div class="m-txt">${opts.html || ""}</div>
+      <div class="m-btns">
+        <button type="button" class="btn secondary" data-m-cancel>Отмена</button>
+        <button type="button" class="btn danger-solid" data-m-ok>${esc(opts.okText || "Удалить")}</button>
+      </div>
+    </div>`;
+  const close = () => { back.remove(); document.removeEventListener("keydown", onKey); };
+  const onKey = e => { if(e.key === "Escape") close(); };
+  back.addEventListener("click", e => { if(e.target === back) close(); });
+  back.querySelector("[data-m-cancel]").addEventListener("click", close);
+  back.querySelector("[data-m-ok]").addEventListener("click", () => { close(); onOk(); });
+  document.addEventListener("keydown", onKey);
+  document.body.appendChild(back);
+  back.querySelector("[data-m-cancel]").focus();
+}
+
 /* ---------- главная навигация ---------- */
 let activeView = "home";
 
@@ -977,7 +1151,32 @@ function setActiveView(v){
 }
 
 /* ---------- рендер ---------- */
+// Любая ошибка отрисовки → аварийный экран с экспортом/импортом вместо
+// пустого белого экрана (данные при этом не меняются).
 function render(){
+  try{ renderView(); }
+  catch(e){ console.error(e); renderCrash(e); }
+}
+function renderCrash(err){
+  if(chart){ try{ chart.destroy(); }catch(_){} chart = null; }
+  document.querySelectorAll("main .view").forEach(v => v.remove());
+  const view = document.createElement("div");
+  view.className = "view active";
+  view.innerHTML = `
+    <div class="card">
+      <h2>Не удалось показать экран</h2>
+      <div class="section-note">Произошла ошибка: ${esc(err && err.message || err)}. Сохранённые данные не изменены.
+        Сохраните их в файл («Экспорт JSON») или загрузите резервную копию («Импорт JSON»).</div>
+      <div class="add-income">
+        <button class="btn" id="exportBtn">⬇ Экспорт JSON</button>
+        <button class="btn secondary" id="importBtn">⬆ Импорт JSON</button>
+      </div>
+      <input type="file" id="importFile" accept="application/json,.json" style="display:none;">
+    </div>`;
+  document.getElementById("main").appendChild(view);
+  bindBackupEvents();
+}
+function renderView(){
   const root = computeTree();
   const inc = root._income;
   const totalAll = state.incomes.reduce((s,i)=>s+n2(i.amount),0);
@@ -1039,25 +1238,31 @@ function renderHome(root){
     <div class="period-row" style="margin-top:8px;">
       <select id="selIncomeEntry" class="period-select" style="flex:1 1 100%;">
         <option value="__ALL__" ${!inc.selectedEntry ? "selected":""}>Итого за месяц — ${fmt(inc.monthTotal)}</option>
-        ${inc.entries.map(e => `<option value="${esc(e.id)}" ${inc.selectedEntry && inc.selectedEntry.id===e.id ? "selected":""}>${esc(e.date)}${e.comment ? " · "+esc(e.comment) : ""} — ${fmt(e.amount)}</option>`).join("")}
+        ${inc.entries.map(e => `<option value="${esc(e.id)}" ${inc.selectedEntry && inc.selectedEntry.id===e.id ? "selected":""}>${esc(dateShort(e.date))}${e.comment ? " · "+esc(e.comment) : ""} — ${fmt(e.amount)}</option>`).join("")}
       </select>
     </div>` : "";
 
   // Заголовок суммы: «Доход за сентябрь 2026 г.» либо «Пополнение от ...», если выбрано одно
   const title = inc.selectedEntry
-    ? `Пополнение от ${inc.selectedEntry.date}${inc.selectedEntry.comment ? " · "+inc.selectedEntry.comment : ""}`
+    ? `Пополнение от ${ruDate(inc.selectedEntry.date)}${inc.selectedEntry.comment ? " · "+inc.selectedEntry.comment : ""}`
     : (inc.month ? `Доход за ${MONTHS_NOM[inc.month].toLowerCase()} ${selY} г.` : "Доход не выбран");
-  const chartCaption = inc.selectedEntry ? "Выбранное пополнение" : "Доход за месяц";
+  const chartCaption = inc.selectedEntry ? "Выбранное пополнение" : (state.incomes.length ? "Доход за месяц" : "План на цель");
 
-  // Предупреждения о фикс-суммах (см. calcAmounts()/computeTree()), коротко:
-  // какие категории урезаны, сколько реально использовано из настроенного.
-  // scope:"month" — доход за месяц целиком (видно всегда); scope:"entry" —
-  // конкретное пополнение (видно только когда оно выбрано или в «Итого»).
-  const fixedWarnHTML = (root._fixedWarnings || []).map(w => {
-    const list = `«${w.names.map(esc).join('», «')}»`;
-    const prefix = w.scope === "entry" && !w.cumulative ? `${esc(w.entryDate)}: ` : "";
-    return `<div class="check-banner bad">⚠ ${prefix}${list}: использовано ${fmt(w.cap)} из ${fmt(w.nominal)} — остальное пошло на «На жизнь» и другое.</div>`;
-  }).join("");
+  // Цель месяца: сколько уже пришло и что дальше (см. allocateMonth()).
+  const calc = root._calc;
+  const goal = calc.goalK / 100, got = calc.monthK / 100;
+  let goalHTML = "";
+  // Цель — про месяц целиком: при выборе отдельного пополнения не показываем
+  if(inc.month && !inc.selectedEntry){
+    const pctGoal = Math.min(100, got / goal * 100);
+    goalHTML = `
+      <div class="row"><div class="label">Цель на месяц</div><div class="value">${fmt(goal)}</div></div>
+      <div class="goal-bar"><div style="width:${pctGoal.toFixed(1)}%"></div></div>
+      ${got >= goal
+        ? `<div class="check-banner good">✓ Цель месяца достигнута${got > goal ? ` · сверх цели ${fmt(got - goal)} распределено по процентам из настроек` : ""}.</div>`
+        : `<div class="lock-note">До цели: ${fmt(goal - got)} (${pct1(pctGoal)} собрано). Пока цель не достигнута, каждое пополнение делится поровну между категориями, которые ещё не набрали свою месячную сумму.</div>`}`;
+  }
+  const lifeHint = lifeHintHTML(calc.lifeK, calc.lifeName, state.incomes.length ? "в этом месяце" : "по плану на месяц");
 
   // Дерево распределения: два столбца (название слева, значение справа).
   // У контейнеров («Доход», «Остаток», «Свободный остаток») значение по центру колонки.
@@ -1066,8 +1271,8 @@ function renderHome(root){
     const cls = isContainer ? "container" : "";
     // Название корня — «Доход» (вместо «Зарплата»)
     const name = node.uid === "root" ? "Доход" : node.name;
-    const tag = node.kind==="fixed" ? '<span class="tag gray">фикс</span>' + (node.baseException ? ' <span class="tag metal">с пополнения</span>' : "")
-              : node.kind==="pct" ? '<span class="tag safe">%</span>' + (node.baseException ? ' <span class="tag metal">с пополнения</span>' : "") : "";
+    const tag = node.kind==="fixed" ? '<span class="tag gray">фикс</span>'
+              : node.kind==="pct" ? '<span class="tag safe">%</span>' : "";
     const cnt = node.custom ? `<span class="cnt">[своя]</span>` : "";
     // Проценты без приписки «от ЗП» — только число со знаком %: 12%
     const pctTxt = isContainer ? "" : `<span class="pct"> · ${pct1(node.pctOfSalary)}</span>`;
@@ -1100,8 +1305,9 @@ function renderHome(root){
       ${incomeSelCtrl}
       ${inc.month ? `
         <div class="row" style="margin-top:8px;"><div class="label">${esc(title)}</div><div class="value pos">${fmt(total)}</div></div>
-        ${fixedWarnHTML}
-      ` : `<div class="empty">Доходов пока нет — добавьте первую запись</div>`}
+        ${goalHTML}
+      ` : `<div class="empty">Доходов пока нет — добавьте первую запись. Ниже — план на цель ${fmt(goal)} в месяц.</div>`}
+      ${lifeHint}
       <div style="height:12px;"></div>
       <button class="btn btn-big" id="goAddIncome"><span class="plus">＋</span>Добавить доход</button>
     </div>
@@ -1122,25 +1328,40 @@ function renderHome(root){
    и в списке под диаграммой. Процент — всегда с ОДНИМ знаком «%»: 12%, 30.4%.
 */
 let chart = null;
-const CHART_COLORS = ["#D4AF6A","#5FC9B6","#E08D6E","#8FAE9B","#7BA7D6","#C79AE0","#E0B06E","#6EC8A5","#E08D9B","#9AAAC4"];
+// Цвет категории — по её месту в дереве (а не среди ненулевых), поэтому у
+// категории всегда один и тот же цвет. Оттенки идут через «золотой угол»
+// (≈137,5°) — соседние категории максимально различаются, сколько бы их ни
+// было; яркость и насыщенность чередуются. Без чёрного и белого: L 52–72%.
+function catColor(i){
+  const hue = (39 + i * 137.508) % 360;
+  const light = [62, 52, 72][i % 3];
+  const sat = [62, 70, 52][Math.floor(i / 3) % 3];
+  return `hsl(${hue.toFixed(1)}, ${sat}%, ${light}%)`;
+}
 
 function drawChart(){
   const canvas = document.getElementById("distChart");
   if(!canvas) return;
-  const items = leaves(state.tree).filter(l => n2(l.viewAmount) > 0);
+  const items = leaves(state.tree)
+    .map((l, i) => ({ l, color: catColor(i) }))
+    .filter(x => n2(x.l.viewAmount) > 0);
   const root = state.tree;
   const total = n2(root._income && root._income.total);
 
   // Список под диаграммой: цвет · название · сумма · процент (один знак %)
   const legend = document.getElementById("distLegend");
   if(legend){
-    legend.innerHTML = items.map((it, i) => `
+    legend.innerHTML = items.length ? items.map(({ l: it, color }) => `
       <div class="lg">
-        <span class="sw" style="background:${CHART_COLORS[i % CHART_COLORS.length]}"></span>
+        <span class="sw" style="background:${color}"></span>
         <span class="nm">${esc(it.name)}</span>
         <span class="vv">${fmt(it.viewAmount)} · ${pct1(it.pctOfSalary)}</span>
-      </div>`).join("");
+      </div>`).join("")
+      : `<div class="empty">${state.incomes.length ? "В этом месяце доходов нет — выберите другой месяц или добавьте доход." : "Нет данных для диаграммы."}</div>`;
   }
+  // Пустой месяц — не показываем пустой круг на пол-экрана
+  const wrap = canvas.closest(".chart-wrap");
+  if(wrap) wrap.style.display = items.length ? "" : "none";
 
   if(chart) chart.destroy();
   if(typeof Chart === "undefined"){
@@ -1156,10 +1377,10 @@ function drawChart(){
   chart = new Chart(canvas.getContext("2d"), {
     type: "doughnut",
     data: {
-      labels: items.map(i => i.name),
+      labels: items.map(x => x.l.name),
       datasets: [{
-        data: items.map(i => n2(i.viewAmount)),
-        backgroundColor: items.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]),
+        data: items.map(x => n2(x.l.viewAmount)),
+        backgroundColor: items.map(x => x.color),
         borderColor: "#16315A",
         borderWidth: 2,
       }]
@@ -1188,16 +1409,20 @@ function drawChart(){
 function renderIncomes(){
   const inc = state.incomes;
   const total = inc.reduce((s,i)=>s+n2(i.amount),0);
-  const avg = inc.length ? total/inc.length : 0;
+  // Средний доход В МЕСЯЦ: сумма / число месяцев, в которых были доходы
+  const months = new Set(inc.map(i => String(i.date || "").slice(0,7)));
+  const avg = months.size ? total/months.size : 0;
 
-  const items = inc.slice().reverse().map((i, ridx) => {
-    const idx = inc.length - 1 - ridx;
+  // История — по дате (новые сверху); при одной дате — добавленный позже выше
+  const items = inc.map((i, idx) => ({ i, idx }))
+    .sort((a, b) => String(b.i.date).localeCompare(String(a.i.date)) || b.idx - a.idx)
+    .map(({ i }) => {
     return `
     <div class="income-item">
-      <div class="month">${mq(esc(i.date || "") + (i.comment ? " · "+esc(i.comment) : ""))}</div>
+      <div class="month">${mq(esc(ruDate(i.date || "")) + (i.comment ? " · "+esc(i.comment) : ""))}</div>
       <div style="display:flex;align-items:center;gap:6px;">
         <div class="amt">${fmt(i.amount)}</div>
-        <div class="del" data-del-income="${idx}">✕</div>
+        <div class="del" data-del-income="${esc(i.id)}" role="button" aria-label="Удалить доход">✕</div>
       </div>
     </div>`;
   }).join("") || `<div class="empty">Пока нет записей о доходах</div>`;
@@ -1206,7 +1431,7 @@ function renderIncomes(){
     <div class="card">
       <h2>Сводка</h2>
       <div class="grid2">
-        <div class="mini"><div class="num">${fmt(avg)}</div><div class="cap">Средний доход</div></div>
+        <div class="mini"><div class="num">${fmt(avg)}</div><div class="cap">Средний доход в месяц</div></div>
         <div class="mini"><div class="num">${inc.length}</div><div class="cap">Записей</div></div>
         <div class="mini" style="grid-column:1/-1;"><div class="num">${fmt(total)}</div><div class="cap">Всего доходов</div></div>
       </div>
@@ -1214,7 +1439,7 @@ function renderIncomes(){
     <div class="card">
       <h2>Добавить доход</h2>
       <label class="field">Дата</label>
-      <input type="date" id="newDate" value="${new Date().toISOString().slice(0,10)}">
+      <input type="date" id="newDate" value="${todayISO()}">
       <div style="height:8px;"></div>
       <label class="field">Сумма (₽)</label>
       <input type="number" id="newAmount" placeholder="Сумма" inputmode="decimal">
@@ -1233,28 +1458,68 @@ function renderIncomes(){
 
 /* ================= ЭКРАН «НАСТРОЙКИ» ================= */
 // Сообщение о заблокированном изменении (проценты уровня > 100%)
-let guardMsg = null;
 // Временный черновик формы «Пользовательские категории», чтобы при блокировке
 // (render без сохранения) введённые данные не пропадали.
 let customDraft = null;
 
-// Сколько ещё процентов можно вложить в контейнер (уровень), чтобы сумма процентов
-// уровня не превысила 100%: учитываем остальные pct-категории и контейнеры,
-// у которых задан явный процент (число). Контейнеры-«остатки» (value == null)
-// сами собирают остаток и в лимит 100% не входят.
-function pctHeadroom(parent, excludeUid){
-  const children = parent.children || [];
-  const pctSum  = children.filter(c=>c.kind==="pct" && c.uid!==excludeUid).reduce((s,c)=>s+n2(c.value),0);
-  const baseSum = children.filter(c=>c.kind==="base" && c.value != null && c.uid!==excludeUid).reduce((s,c)=>s+n2(c.value),0);
-  return Math.max(0, 100 - pctSum - baseSum);
+// Хватает ли основы уровня под категорию uid в дереве tree (план на цель месяца).
+// Проценты считаются от основы, фикс-суммы — в рублях; вместе они не могут
+// выйти за основу. Если основа уровня 0 ₽ (напр. «Свободный остаток» пуст) —
+// проценты вводить можно (это доля от будущего остатка), а рубли — нет.
+function checkLevel(tree, uid){
+  const parent = findParentOf(tree, uid);
+  const nd = findNode(tree, uid).node;
+  const B = n2(planTree(tree, toK(Math.max(0, n2(state.monthGoal))), new Map()).get(parent.uid)) / 100;
+  const kids = parent.children || [];
+  const isPctPart = c => c.kind === "pct" || (c.kind === "base" && c.value != null);
+  const pctOthers = kids.filter(c => isPctPart(c) && c.uid !== uid).reduce((s,c) => s + n2(c.value), 0);
+  const fixOthers = kids.filter(c => c.kind === "fixed" && c.uid !== uid).reduce((s,c) => s + n2(c.value), 0);
+  const roomPct = Math.max(0, 100 - pctOthers - (B > 0 ? fixOthers / B * 100 : 0));
+  const roomRub = Math.max(0, B * (1 - pctOthers/100) - fixOthers);
+  const ok = nd.kind === "fixed" ? n2(nd.value) <= roomRub + 0.005 : n2(nd.value) <= roomPct + 1e-6;
+  return { ok, kind: nd.kind, parentUid: parent.uid, base: B,
+    roomPct: Math.floor(roomPct * 100) / 100, roomRub: Math.floor(roomRub * 100) / 100 };
+}
+
+// Применяет изменение к копии дерева, проверяет уровень категории uid и только
+// тогда сохраняет. Уменьшать значение на своём уровне можно всегда — иначе уже
+// перегруженный уровень было бы не исправить. onFail — перед показом запрета
+// (напр. сохранить черновик формы). Возвращает true, если сохранено.
+function tryTreeChange(uid, mutate, onFail){
+  const copy = JSON.parse(JSON.stringify(cleanTree(state.tree)));
+  const before = findNode(copy, uid);
+  const old = before ? { kind: before.node.kind, value: n2(before.node.value), parentUid: findParentOf(copy, uid).uid } : null;
+  mutate(copy);
+  const nd = findNode(copy, uid).node;
+  // 0% не имеет смысла: ненужную категорию удаляют или переводят в ₽ с суммой 0
+  if(nd.kind === "pct" && !(n2(nd.value) > 0)){
+    if(onFail) onFail();
+    render();
+    toast("Процент должен быть больше 0. Если категория не нужна — удалите её или переведите в ₽ и поставьте 0.", "warn");
+    return false;
+  }
+  const r = checkLevel(copy, uid);
+  const decreased = old && old.kind === nd.kind && old.parentUid === r.parentUid && n2(nd.value) <= old.value + 1e-9;
+  if(!r.ok && !decreased){
+    const msg = r.kind === "fixed"
+      ? `Нельзя: сумма превысит основу уровня (${fmt(r.base)} при цели ${fmt(n2(state.monthGoal))}). Доступно ещё ${fmt(r.roomRub)}.`
+      : `Нельзя: вместе с остальными категориями уровня проценты превысят основу (${fmt(r.base)}). Доступно ещё ${pctFmt(r.roomPct, 2)}${r.base > 0 ? ` (≈ ${fmt(r.base * r.roomPct / 100)})` : ""}.`;
+    if(onFail) onFail();
+    render();   // вернуть в поле прежнее значение
+    toast(msg, "err");
+    return false;
+  }
+  state.tree = copy;
+  save();
+  return true;
 }
 
 // Информация об уровнях иерархии (для блока «Категории»)
 const CAT_LEVELS = [
-  { containerUid: "root", baseName: "Доход", title: "Уровень 1 — от всего дохода",
-    baseShort: "всего дохода", baseFull: "доход за выбранный месяц; остаток уходит в «Остаток»" },
+  { containerUid: "root", baseName: "Цель на месяц", title: "Уровень 1 — от всего дохода",
+    baseShort: "всего дохода", baseFull: "план считается от цели на месяц; остаток уходит в «Остаток»" },
   { containerUid: "b4",   baseName: "Остаток", title: "Уровень 2 — от остатка",
-    baseShort: "остатка", baseFull: "остаток после благотворительности, ИИС и ПДС; нераспределённое уходит в «Свободный остаток»" },
+    baseShort: "остатка", baseFull: "всё, что осталось после категорий уровня 1; нераспределённое уходит в «Свободный остаток»" },
   { containerUid: "b6",   baseName: "Свободный остаток", title: "Уровень 3 — от свободного остатка",
     baseShort: "свободного остатка", baseFull: "свободный остаток — всё, что осталось после категорий уровня 2" },
 ];
@@ -1271,34 +1536,36 @@ function renderCatLevel(container, info){
   const fixedPct = base>0 ? fixedSum/base*100 : 0;
   const usedPct  = pctSum + fixedPct + baseSum;           // сколько % основания задействовано
   const overAll  = pctSum + baseSum > 100 + 1e-9;         // проценты уровня упёрлись в 100%
-  // Есть ли контейнер-«остаток» (value == null): он забирает всё, что не ушло выше,
-  // поэтому уровень считается полностью распределённым, и предупреждение не нужно.
+  // Перегруз: % и фикс-суммы вместе больше основы — planTree() урежет все суммы
+  // уровня пропорционально (см. комментарий к расчёту).
+  const overload = usedPct > 100 + 1e-6 || (base <= 0 && fixedSum > 0);
+  // Есть ли контейнер-«остаток» (value == null): он забирает всё, что не ушло выше.
   const hasRemainder = (container.children||[]).some(ch => ch.kind==="base" && ch.value == null);
-  // Заметка уровня (только для уровней, где распределяются проценты)
   let note = "";
   if(overAll){
     note = `<div class="lvl-note err">⚠ Сумма процентов этого уровня больше 100% — уменьшите проценты.</div>`;
-  } else if(!hasRemainder && usedPct > 100 + 1e-9){
-    note = `<div class="lvl-note err">⚠ Проценты и фиксированные суммы этого уровня вместе больше 100% основы (${pctFmt(usedPct)}) — суммы ниже пропорционально урезаны, чтобы уложиться в бюджет. Уменьшите проценты или фиксированную сумму.</div>`;
-  } else if(!hasRemainder && kids.some(k=>k.kind==="pct") && usedPct < 100 - 1e-9){
+  } else if(overload){
+    note = `<div class="lvl-note err">⚠ Проценты и фиксированные суммы этого уровня вместе больше основы (${pctFmt(usedPct)}) — все суммы уровня пропорционально урезаны${hasRemainder ? ", на следующий уровень ничего не остаётся" : ""}. Уменьшите проценты или фиксированные суммы, либо увеличьте цель на месяц.</div>`;
+  } else if(!hasRemainder && usedPct < 100 - 1e-9){
     const rem = Math.max(0, base - usedPct/100*base);
-    note = `<div class="lvl-note warn">Распределены не все средства: не распределено ≈ ${fmt(rem)} из ${fmt(base)}.</div>`;
+    note = `<div class="lvl-note warn">Проценты уровня меньше 100%: оставшиеся ≈ ${fmt(rem)} из ${fmt(base)} делятся между категориями уровня пропорционально.</div>`;
   }
-  if(kids.some(k => k.baseException)){
-    note += `<div class="lvl-note warn">⚡ На этом уровне есть категория с расчётом «от каждого пополнения» — её сумма считается отдельно и может не совпадать с долей от «Основы» уровня.</div>`;
+  if(container.uid === "b4"){
+    const life = (container.children||[]).find(ch => ch.uid === LIFE_UID);
+    if(life) note += lifeHintHTML(toK(life.amount), life.name, "по плану на месяц");
   }
   const rows = kids.map(node => {
     const isPct = node.kind === "pct";
     const tag = node.custom ? '<span class="tag gray">своя</span>' : "";
     // Пояснение, от чего считается значение
     const desc = isPct
-      ? `${pctFmt(node.value)} от ${info.baseShort}${node.baseException ? " · считается от каждого пополнения" : ""}`
-      : `фикс ${fmt(node.value)} · от ${info.baseShort}${node.baseException ? " · с каждого пополнения" : ""}`;
-    // Красная подсветка — фикс-сумма(ы) выше порога 70% (см. calcAmounts()).
-    const overFix = !isPct && (n2(node.value) > round2(base*0.7) || fixedSum > round2(base*0.7));
+      ? `${pctFmt(node.value)} от ${info.baseShort}`
+      : `фикс ${fmt(node.value)} · от ${info.baseShort}`;
+    // Красная подсветка — уровень перегружен, сумма урезана.
+    const overFix = overload && round2(node.amount) + 0.005 < (isPct ? round2(base*n2(node.value)/100) : round2(n2(node.value)));
     const valInput = isPct
-      ? `<input type="number" class="cat-inp" data-set-value="${node.uid}" data-kind="pct" value="${n2(node.value)}" step="0.1" min="0"><span class="inp-sfx">%</span>
-         <span class="amount">${fmt(node.amount)}</span>`
+      ? `<input type="number" class="cat-inp${overFix?" over":""}" data-set-value="${node.uid}" data-kind="pct" value="${n2(node.value)}" step="0.1" min="0.1"><span class="inp-sfx">%</span>
+         <span class="amount${overFix?" over":""}">${fmt(node.amount)}</span>`
       : `<input type="number" class="cat-inp${overFix?" over":""}" data-set-value="${node.uid}" data-kind="fixed" value="${n2(node.value)}" step="1" min="0" inputmode="decimal"><span class="inp-sfx">₽</span>
          <span class="amount${overFix?" over":""}">${fmt(node.amount)}</span>`;
     return `
@@ -1326,24 +1593,8 @@ function renderCatLevel(container, info){
     </div>`;
 }
 
-// Список категорий-исключений (kind:"pct") с переключателем «месяц / пополнение».
-// Показывает и базовые, и пользовательские процентные категории со всех уровней.
-function renderExceptionRows(root){
-  const nodes = flatten(root).filter(n => n.kind === "pct" || n.kind === "fixed");
-  if(!nodes.length) return `<div class="lock-note">Категорий пока нет.</div>`;
-  return nodes.map(n => `
-    <div class="set-row">
-      <div class="s-name">${mq(esc(n.name))}<small>${n.kind==="pct" ? pctFmt(n.value) : "фикс "+fmt(n.value)}${n.custom ? " · своя" : ""}</small></div>
-      <div class="seg" data-exc-seg="${n.uid}">
-        <button type="button" data-exc-val="0" class="${!n.baseException ? 'active' : ''}">Месяц</button>
-        <button type="button" data-exc-val="1" class="${n.baseException ? 'active' : ''}">Пополнение</button>
-      </div>
-    </div>`).join("");
-}
-
 function renderSettings(root){
   // Сообщение о заблокированном изменении (показывается один раз)
-  const guard = guardMsg; guardMsg = null;
   // Черновик формы своих категорий (на случай блокировки)
   const draft = customDraft; customDraft = null;
   // редактируемая иерархия категорий — сгруппирована по уровням
@@ -1381,17 +1632,18 @@ function renderSettings(root){
           <button type="button" class="debt-close" data-close-debt title="Больше не показывать">✕</button>
         </div>
       </div>`}
-    ${guard ? `<div class="card"><div class="lvl-note err">${guard}</div></div>` : ""}
 
     <div class="card">
-      <h2>Расчёт процентов</h2>
-      <div class="section-note">По умолчанию и проценты, и фиксированные суммы считаются от общей суммы пополнений за месяц. Для отдельных категорий можно включить «Пополнение» — тогда сумма считается по каждому пополнению отдельно и складывается за месяц (например, «1% с каждой выплаты» или «фикс. сумма с каждой выплаты» вместо «от суммы месяца»). Если фиксированные категории в сумме больше 70% основы — используется не больше 50%, остальное уходит другим категориям, чтобы «На жизнь» не осталось почти без денег (см. сообщение на главной). Если доход месяца — несколько пополнений: это правило применяется к КАЖДОЙ выплате отдельно (не больше 50% именно от неё), а недостающее доплачивается следующими выплатами — так одна выплата не отдаёт в фикс-категории больше половины себя, а уже показанные (и, как правило, уже переведённые) суммы предыдущих пополнений не пересчитываются при добавлении новых доходов за тот же месяц.</div>
-      ${renderExceptionRows(root)}
+      <h2>Цель на месяц</h2>
+      <div class="section-note">Сколько вы планируете получать в месяц. От этой суммы считается план каждой категории (суммы справа в «Категориях»).<br><br>
+        <b>Как распределяется доход.</b> Пока доход месяца меньше цели, каждое пополнение делится поровну между категориями; категория, набравшая свою месячную сумму, выбывает, а её долю получают остальные. Всё, что сверх цели, делится по процентам из настроек (фиксированные суммы к этому времени уже собраны). Уже внесённые пополнения при добавлении новых не пересчитываются.</div>
+      <label class="field">Цель, ₽ в месяц</label>
+      <input type="number" id="goalInput" value="${n2(state.monthGoal)}" min="${MIN_GOAL}" step="1000" inputmode="decimal">
     </div>
 
     <div class="card">
       <h2>Категории</h2>
-      <div class="section-note">Меняйте % или фиксированную сумму. Все зависимые суммы пересчитаются автоматически.</div>
+      <div class="section-note">Меняйте % или фиксированную сумму. Все зависимые суммы пересчитаются автоматически. Проценты и суммы уровня вместе не могут превысить его основу (план на цель месяца); уменьшать значения можно всегда.</div>
       ${levelHTML || `<div class="lock-note">Категорий нет.</div>`}
     </div>
 
@@ -1401,20 +1653,20 @@ function renderSettings(root){
       <label class="field">Название</label>
       <input type="text" id="customName" placeholder="Напр. Отпуск" value="${esc(draft ? draft.name : "")}">
       <div class="form-grid" style="margin-top:8px;">
-        <div>
+        <div style="flex-basis:100%;">
           <label class="field">Уровень</label>
-          <select id="customLevel" style="background:var(--navy);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;width:100%;font-size:14px;">${levelOpts}</select>
+          <select id="customLevel" class="form-select">${levelOpts}</select>
         </div>
         <div>
           <label class="field">Тип</label>
-          <select id="customType" style="background:var(--navy);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;width:100%;font-size:14px;">
+          <select id="customType" class="form-select">
             <option value="pct" ${!(draft && draft.type === "fixed") ? "selected":""}>Процент</option>
             <option value="fixed" ${draft && draft.type === "fixed" ? "selected":""}>Фикс. сумма</option>
           </select>
         </div>
         <div>
           <label class="field">Значение</label>
-          <input type="number" id="customValue" placeholder="${draft && draft.type === "fixed" ? "Введите сумму" : "Введите процент"}" inputmode="decimal" value="${draft ? draft.val : ""}">
+          <input type="number" id="customValue" placeholder="${draft && draft.type === "fixed" ? "Сумма, ₽" : "Процент"}" inputmode="decimal" value="${draft ? draft.val : ""}">
         </div>
       </div>
       <div style="height:10px;"></div>
@@ -1426,13 +1678,11 @@ function renderSettings(root){
 
     <div class="card">
       <h2>Резервная копия</h2>
-      <div class="section-note">Все данные хранятся только в этом браузере. Экспорт сохраняет ВСЁ: категории, историю доходов и настройки — для переноса на новое устройство.</div>
       <div class="add-income">
         <button class="btn" id="exportBtn">⬇ Экспорт JSON</button>
         <button class="btn secondary" id="importBtn">⬆ Импорт JSON</button>
       </div>
       <input type="file" id="importFile" accept="application/json,.json" style="display:none;">
-      <div id="importStatus" class="lock-note" style="margin-top:8px;"></div>
     </div>
   `;
 }
@@ -1482,19 +1732,6 @@ const SPRAVKA = [
     ]
   },
   {
-    title: "Почему именно такой порядок в водопаде",
-    type: "nl",
-    rows: [
-      ["Жизнь", "Без этого всё остальное бессмысленно."],
-      ["Среднесрок", "Чтобы налог в декабре не пришлось платить из подушки или кредиткой."],
-      ["Подушка", "Выше инвестиций сознательно: без резерва вы рискуете закрыть ИИС досрочно и вернуть все вычеты с пенями. Это дороже, чем год без вычета."],
-      ["ПДС", "Самая высокая отдача во всём плане: +50% от государства сразу."],
-      ["ИИС-3", "13% вычета плюс освобождение прибыли, но деньги заперты на 5 лет."],
-      ["Своё дело", "Отдельно от подушки: подушка на беду, эти — на возможность."],
-      ["Агрессив", "Только на обычном брокерском счёте. На ИИС-3 нет иностранных бумаг, лимит выбран, деньги заперты."],
-    ]
-  },
-  {
     title: "Оговорки",
     type: "kv",
     rows: [
@@ -1513,7 +1750,6 @@ const CALENDAR = [
   { id:"prep-nalog-kabinet", date:"2026-10-08", type:"Подготовка", what:"Завести личный кабинет налогоплательщика", details:"nalog.gov.ru, вход через Госуслуги. Без него вычет получить нельзя" },
   { id:"prep-iis-check", date:"2026-10-08", type:"Подготовка", what:"Проверить ИИС-3 у брокера", details:"Счёт уже открыт в 2026 году — проверьте комиссию при нулевом остатке и не закроют ли счёт при долгом бездействии. Счёт НЕ переоткрывать — потеряете срок" },
   { id:"prep-npf-choice", date:"2026-10-08", type:"Подготовка", what:"Выбрать НПФ для ПДС", details:"Смотреть: доходность 2024–2025, комиссии, раздел договора о ВЫКУПНОЙ СУММЕ и понижающих коэффициентах, а также новый срок возврата софинансирования (см. Справку). Если за 2 дня не успеете — подпишите чуть позже, план под это не ломается" },
-  { id:"prep-cushion-risk", date:"2026-10-08", type:"Подготовка", what:"Подушка безопасности пока неполная — осознанный риск", details:"Целевая сумма — 3-6 месячных расходов, вы сами задаёте её в Настройках. Пока резерв неполный, досрочное закрытие ИИС-3/ПДС из-за непредвиденной траты обойдётся дороже года без вычета — приложение само откладывает долю в подушку каждый месяц, старайтесь не трогать её на другие цели" },
   { id:"key-pds-contract", date:"2026-10-10", type:"Ключевая дата", what:"Заключить договор ПДС + первый взнос", details:"Паспорт, СНИЛС, ИНН, Госуслуги. Первый взнос 6 000 ₽. С этой даты пойдут 15 лет договора. 2026 становится 1-м из 10 лет софинансирования — переносить старт на январь не нужно" },
   { id:"key-autopay-setup", date:"2026-10-10", type:"Ключевая дата", what:"Настроить 3 автоплатежа на дату «зарплата + 1 день»", details:"ПДС 6 000 ₽ / ИИС-3 27 350 ₽ / накопительный счёт 4 400 ₽" },
   { id:"prep-simplified-vychet", date:"2026-10-15", type:"Подготовка", what:"Уточнить в НПФ и у брокера про упрощённый вычет", details:"Передают ли они данные в ФНС. Если нет — придётся подавать 3-НДФЛ вручную" },
@@ -1556,7 +1792,7 @@ const MONTHS_RU = ["Январь","Февраль","Март","Апрель","М
 function ruDate(iso){
   const d = new Date(iso + "T00:00:00");
   if(isNaN(d)) return iso;
-  return `${d.getDate()} ${MONTHS_RU[d.getMonth()]} ${d.getFullYear()}`;
+  return `${d.getDate()} ${MONTHS_GEN[d.getMonth()+1]} ${d.getFullYear()}`;
 }
 
 function renderInfo(){
@@ -1568,25 +1804,35 @@ function renderInfo(){
   }).join("");
 
   const sorted = CALENDAR.slice().sort((a,b)=>a.date.localeCompare(b.date) || a.type.localeCompare(b.type));
-  const today = new Date().toISOString().slice(0,10);
-  const calHTML = sorted.map((item) => {
-    const { id, date, type, what, details } = item;
-    const done = !!state.calCheck[id];
-    const typeCls = type === "Ключевая дата" ? "key" : type === "Ежегодно" ? "year" : "podg";
-    const expired = date < today && !done;
-    return `
-      <div class="cal-group ${expired ? 'warn' : ''}">
-        <span class="cal-date">${ruDate(date)}</span>
-        <span class="cal-type ${typeCls}">${esc(type)}</span>
-        <div class="cal-check ${done?'done':''}">
-          <input type="checkbox" data-cal-check="${esc(id)}" ${done?"checked":""}>
-          <div class="cal-body">
-            <div class="w">${esc(what)}</div>
-            <div class="d">${esc(details||"")}</div>
+  const today = todayISO();
+  // Пункты одного дня — под одним заголовком с датой (sorted уже по дате)
+  const byDate = [];
+  sorted.forEach(item => {
+    const last = byDate[byDate.length - 1];
+    if(last && last.date === item.date) last.items.push(item);
+    else byDate.push({ date: item.date, items: [item] });
+  });
+  const calHTML = byDate.map(g => `
+      <div class="cal-group">
+        <span class="cal-date">${ruDate(g.date)}</span>
+        ${g.items.map(item => {
+          const { id, date, type, what, details } = item;
+          const done = !!state.calCheck[id];
+          const typeCls = type === "Ключевая дата" ? "key" : type === "Ежегодно" ? "year" : "podg";
+          const expired = date < today && !done;
+          return `
+        <div class="cal-item ${expired ? 'warn' : ''}">
+          <span class="cal-type ${typeCls}">${esc(type)}</span>
+          <div class="cal-check ${done?'done':''}">
+            <input type="checkbox" data-cal-check="${esc(id)}" ${done?"checked":""}>
+            <div class="cal-body">
+              <div class="w">${esc(what)}</div>
+              <div class="d">${esc(details||"")}</div>
+            </div>
           </div>
-        </div>
-      </div>`;
-  }).join("");
+        </div>`;
+        }).join("")}
+      </div>`).join("");
 
   // Долгосрок (15 лет) — генерируем помесячный график 2027–2041 + сводка
   const dolgHTML = buildDolgrosok();
@@ -1600,7 +1846,7 @@ function renderInfo(){
     <div style="height:10px;"></div>
     <div class="card">
       <h2>Календарь действий</h2>
-      <div class="section-note">Отмечайте выполненное галочкой. Красным — то, что нельзя пропускать. Источник — лист «Календарь действий».</div>
+      <div class="section-note">Отмечайте выполненное галочкой. Жёлтым отмечены ключевые даты — их нельзя пропускать. Источник — лист «Календарь действий».</div>
       ${calHTML}
     </div>
     <div style="height:10px;"></div>
@@ -1736,15 +1982,37 @@ function bindEvents(){
     const date = document.getElementById("newDate").value;
     const rawAmount = parseFloat(document.getElementById("newAmount").value);
     const comment = document.getElementById("newComment").value.trim();
-    if(!date || isNaN(rawAmount)) return;
-    const amount = Math.max(0, rawAmount); // отрицательный доход не имеет смысла — как и другие суммы в приложении, не даём уйти в минус
+    if(!date || !isIsoDate(date)){ toast("Укажите дату дохода.", "warn"); return; }
+    if(isNaN(rawAmount) || !isFinite(rawAmount)){ toast("Укажите сумму дохода.", "warn"); return; }
+    if(rawAmount <= 0){ toast("Сумма дохода должна быть больше 0 ₽.", "warn"); return; }
+    const amount = round2(rawAmount);
     state.incomes.push({id: freshUid(), date, amount, comment});
-    save();
+    // На главной сразу показываем месяц нового дохода
+    const d = new Date(date + "T00:00:00");
+    if(!isNaN(d)){ selMonth = d.getMonth()+1; selYear = d.getFullYear(); selIncomeChoice = null; }
+    if(save()) toast(`Доход ${fmt(amount)} от ${ruDate(date)} добавлен.`, "ok");
+  });
+  // Enter в любом поле формы — то же, что кнопка «Добавить»
+  ["newDate", "newAmount", "newComment"].forEach(id => {
+    document.getElementById(id)?.addEventListener("keydown", e => {
+      if(e.key === "Enter"){ e.preventDefault(); document.getElementById("addIncomeBtn")?.click(); }
+    });
   });
   document.querySelectorAll("[data-del-income]").forEach(el=>{
     el.addEventListener("click", ()=>{
-      state.incomes.splice(parseInt(el.dataset.delIncome,10),1);
-      save();
+      const i = state.incomes.find(x => x.id === el.dataset.delIncome);
+      if(!i) return;
+      confirmDialog({
+        title: "Удалить доход?",
+        html: `<b>${esc(ruDate(i.date || ""))} — ${fmt(i.amount)}</b>${i.comment ? `<br>${esc(i.comment)}` : ""}<br><br>Распределение этого месяца пересчитается. Отменить удаление будет нельзя.`,
+        okText: "Удалить",
+      }, () => {
+        // Удаляем по id — на случай, если список успел измениться
+        const at = state.incomes.findIndex(x => x.id === i.id);
+        if(at === -1) return;
+        state.incomes.splice(at, 1);
+        if(save()) toast(`Доход ${fmt(i.amount)} от ${ruDate(i.date)} удалён.`, "ok");
+      });
     });
   });
 
@@ -1754,17 +2022,14 @@ function bindEvents(){
     save();
   });
 
-  // --- Настройки: категории-исключения (расчёт % от каждого пополнения отдельно) ---
-  document.querySelectorAll("[data-exc-seg]").forEach(seg=>{
-    seg.querySelectorAll("button").forEach(btn=>{
-      btn.addEventListener("click", ()=>{
-        const uid = seg.dataset.excSeg;
-        const hit = findNode(state.tree, uid);
-        if(!hit) return;
-        hit.node.baseException = btn.dataset.excVal === "1";
-        save();
-      });
-    });
+  // --- Настройки: цель на месяц ---
+  document.getElementById("goalInput")?.addEventListener("change", e=>{
+    const v = parseFloat(e.target.value);
+    // Пустое поле/мусор/меньше минимума — не меняем цель молча, а возвращаем прежнюю.
+    if(e.target.value.trim() === "" || isNaN(v) || !isFinite(v)){ toast("Введите цель на месяц — сумму в рублях.", "warn"); render(); return; }
+    if(v < MIN_GOAL){ toast(`Цель на месяц — не меньше ${fmt(MIN_GOAL)}.`, "warn"); render(); return; }
+    state.monthGoal = round2(v);
+    save();
   });
 
   // --- Настройки: переключение тип/значение категории ---
@@ -1778,17 +2043,15 @@ function bindEvents(){
         const nd = hit.node;
         // при переключении типа берём текущее «значение» за основу
         if(kind === "pct" && nd.kind !== "pct"){
-          const newVal = nd.pctOfSalary || 1;
           const parent = findParentOf(state.tree, uid);
-          const room = parent ? pctHeadroom(parent, uid) : 100;
-          if(newVal > room + 1e-9){
-            guardMsg = `Нельзя: сумма процентов уровня превысит 100%. Доступно ещё ${room.toFixed(1)}%.`;
-            render(); return;
-          }
-          nd.kind = "pct"; nd.value = newVal;
+          // % от основы своего уровня (план на цель), а не от всего дохода
+          const newVal = (parent && n2(parent.amount) > 0) ? (round2(n2(nd.amount) / n2(parent.amount) * 10000) / 100 || 1) : 1;
+          tryTreeChange(uid, t => { const n = findNode(t, uid).node; n.kind = "pct"; n.value = newVal; });
         }
-        if(kind === "fixed" && nd.kind !== "fixed"){ nd.kind = "fixed"; nd.value = nd.amount || 0; }
-        save();
+        if(kind === "fixed" && nd.kind !== "fixed"){
+          const newVal = round2(n2(nd.amount));
+          tryTreeChange(uid, t => { const n = findNode(t, uid).node; n.kind = "fixed"; n.value = newVal; });
+        }
       });
     });
   });
@@ -1801,15 +2064,8 @@ function bindEvents(){
       if(!hit) return;
       const v = parseFloat(inp.value);
       const val = isNaN(v)?0:Math.max(0,v);
-      if(inp.dataset.kind === "pct"){
-        const room = pctHeadroom(findParentOf(state.tree, uid) || state.tree, uid);
-        if(val > room + 1e-9){
-          guardMsg = `Нельзя: сумма процентов уровня превысит 100%. Доступно ещё ${room.toFixed(1)}%.`;
-          render(); return;
-        }
-        hit.node.kind = "pct"; hit.node.value = val;
-      } else { hit.node.kind = "fixed"; hit.node.value = val; }
-      save();
+      const kind = inp.dataset.kind === "pct" ? "pct" : "fixed";
+      tryTreeChange(uid, t => { const n = findNode(t, uid).node; n.kind = kind; n.value = val; });
     });
   });
 
@@ -1817,35 +2073,47 @@ function bindEvents(){
   // Плейсхолдер поля «Значение» зависит от выбранного типа
   document.getElementById("customType")?.addEventListener("change", e=>{
     const v = document.getElementById("customValue");
-    if(v) v.placeholder = e.target.value === "fixed" ? "Введите сумму" : "Введите процент";
+    if(v) v.placeholder = e.target.value === "fixed" ? "Сумма, ₽" : "Процент";
   });
   document.getElementById("addCustomBtn")?.addEventListener("click", ()=>{
     const name = document.getElementById("customName").value.trim();
     const levelId = document.getElementById("customLevel").value;
     const type = document.getElementById("customType").value;
     const val = parseFloat(document.getElementById("customValue").value);
-    if(!name || isNaN(val)) return;
+    if(!name || isNaN(val)){ toast(!name ? "Укажите название категории." : "Укажите значение категории.", "warn"); return; }
     const { parent } = containerByLevel(levelId);
-    if(type === "pct"){
-      const room = pctHeadroom(parent, null);
-      if(val > room + 1e-9){
-        guardMsg = `Нельзя: сумма процентов уровня превысит 100%. Доступно ещё ${room.toFixed(1)}%.`;
-        customDraft = { name, level: levelId, type, val: Math.max(0, val) };
-        render(); return;
-      }
-    }
-    insertCategoryChild(parent, { uid: freshUid(), kind: type==="pct"?"pct":"fixed", value: Math.max(0,val), name, custom: true, baseException: false });
-    save();
+    const uid = freshUid();
+    const node = { uid, kind: type==="pct"?"pct":"fixed", value: Math.max(0,val), name, custom: true };
+    tryTreeChange(uid, t => {
+      const hit = findNode(t, parent.uid);
+      insertCategoryChild(hit ? hit.node : t, node);
+    }, () => { customDraft = { name, level: levelId, type, val: Math.max(0, val) }; });
+  });
+
+  // Enter в полях новой категории — то же, что кнопка «Добавить категорию»
+  ["customName", "customValue"].forEach(id => {
+    document.getElementById(id)?.addEventListener("keydown", e => {
+      if(e.key === "Enter"){ e.preventDefault(); document.getElementById("addCustomBtn")?.click(); }
+    });
   });
 
   // --- Настройки: удаление пользовательской категории ---
   document.querySelectorAll("[data-del-custom]").forEach(el=>{
     el.addEventListener("click", ()=>{
       const uid = el.dataset.delCustom;
-      const parent = findParentOf(state.tree, uid);
-      if(!parent) return;
-      parent.children = parent.children.filter(c=>c.uid !== uid);
-      save();
+      const hit = findNode(state.tree, uid);
+      if(!hit) return;
+      const nd = hit.node;
+      confirmDialog({
+        title: "Удалить категорию?",
+        html: `<b>${esc(nd.name)}</b> — ${nd.kind === "pct" ? pctFmt(nd.value) : fmt(nd.value)}<br><br>Её доля перейдёт другим категориям уровня, распределение пересчитается. Отменить удаление будет нельзя.`,
+        okText: "Удалить",
+      }, () => {
+        const parent = findParentOf(state.tree, uid);
+        if(!parent) return;
+        parent.children = parent.children.filter(c=>c.uid !== uid);
+        if(save()) toast(`Категория «${nd.name}» удалена.`, "ok");
+      });
     });
   });
 
@@ -1856,19 +2124,15 @@ function bindEvents(){
       const levelId = sel.value;
       const parent = findParentOf(state.tree, uid);
       if(!parent) return;
-      const idx = parent.children.findIndex(c=>c.uid === uid);
-      const nd = parent.children[idx];
       const { parent: newParent } = containerByLevel(levelId);
-      if(nd.kind === "pct" && newParent !== parent){
-        const room = pctHeadroom(newParent, uid);
-        if(n2(nd.value) > room + 1e-9){
-          guardMsg = `Нельзя: на этом уровне сумма процентов превысит 100%. Доступно ещё ${room.toFixed(1)}%.`;
-          render(); return;
-        }
-      }
-      parent.children.splice(idx,1);
-      insertCategoryChild(newParent, nd);
-      save();
+      if(newParent === parent) return;
+      tryTreeChange(uid, t => {
+        const from = findParentOf(t, uid);
+        const idx = from.children.findIndex(c=>c.uid === uid);
+        const nd = from.children.splice(idx,1)[0];
+        const to = findNode(t, newParent.uid);
+        insertCategoryChild(to ? to.node : t, nd);
+      });
     });
   });
 
@@ -1888,7 +2152,12 @@ function bindEvents(){
       btn.remove();
       inp.focus();
       inp.select();
+      // done — onDone срабатывает один раз: после Esc render() убирает поле,
+      // и браузер присылает blur, который иначе сохранил бы введённое имя.
+      let done = false;
       const onDone = (commit)=>{
+        if(done) return;
+        done = true;
         const v = (inp.value||"").trim();
         if(commit && v && v !== hit.node.name){ hit.node.name = v; save(); }
         else { render(); }
@@ -1902,54 +2171,7 @@ function bindEvents(){
   });
 
   // --- Настройки: экспорт / импорт ---
-  document.getElementById("exportBtn")?.addEventListener("click", ()=>{
-    const dataStr = JSON.stringify(snapState(), null, 2);
-    const blob = new Blob([dataStr], {type:"application/json"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `budget-backup-${new Date().toISOString().slice(0,10)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  });
-  document.getElementById("importBtn")?.addEventListener("click", ()=>{
-    document.getElementById("importFile").click();
-  });
-  document.getElementById("importFile")?.addEventListener("change", (e)=>{
-    const file = e.target.files[0];
-    if(!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      // #importStatus запрашиваем заново в каждой ветке: save() ниже
-      // пересобирает DOM, старая ссылка на элемент станет «висячей».
-      try{
-        const parsed = JSON.parse(reader.result);
-        if(!parsed || !parsed.tree || !parsed.tree.kind){
-          throw new Error("Похоже, это не файл резервной копии этого приложения.");
-        }
-        state = Object.assign(defaultState(), parsed);
-        migrateTree(state.tree);
-        migrateIncomes(state.incomes);
-        const fixedCount = sanitizeValues(state);
-        if(!state.salary) state.salary = 0;
-        selIncomeChoice = null;
-        save();
-        const statusEl = document.getElementById("importStatus");
-        if(statusEl){
-          statusEl.textContent = fixedCount > 0
-            ? `⚠ Импортировано, но ${fixedCount} ${fixedCount===1?"значение было отрицательным":"значения/значений были отрицательными"} — приведено к 0. Если это не ожидалось (например, опечатка при ручной правке файла), проверьте исходный JSON.`
-            : "✓ Данные восстановлены из файла — идеальная копия состояния.";
-        }
-      }catch(err){
-        const statusEl = document.getElementById("importStatus");
-        if(statusEl){ statusEl.textContent = "⚠ Не удалось импортировать: " + err.message; }
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = "";
-  });
+  bindBackupEvents();
 
   // --- Информация: сворачивание лет в долгосроке ---
   document.querySelectorAll("[data-year-toggle]").forEach(h=>{
@@ -1966,6 +2188,71 @@ function bindEvents(){
       save();
     });
   });
+}
+
+// Экспорт/импорт — отдельно от bindEvents(): нужны и на аварийном экране
+// (renderCrash()), когда обычная отрисовка не удалась.
+function bindBackupEvents(){
+  document.getElementById("exportBtn")?.addEventListener("click", ()=>{
+    const dataStr = JSON.stringify(snapState(), null, 2);
+    const blob = new Blob([dataStr], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `budget-backup-${todayISO()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+  document.getElementById("importBtn")?.addEventListener("click", ()=>{
+    document.getElementById("importFile").click();
+  });
+  document.getElementById("importFile")?.addEventListener("change", (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      // Сначала полностью проверяем файл на копии — текущие данные не
+      // трогаются, пока пользователь не подтвердит замену.
+      let res;
+      try{
+        res = normalizeState(JSON.parse(reader.result));
+        migrateCalCheck(res.st);
+      }catch(err){
+        toast("Не удалось импортировать: " + (err instanceof SyntaxError ? "файл повреждён или это не JSON." : err.message), "err");
+        return;
+      }
+      const next = res.st;
+      const cats = st => flatten(st.tree).filter(n => n.kind === "pct" || n.kind === "fixed").length;
+      const curInc = Array.isArray(state.incomes) ? state.incomes.length : 0;
+      confirmDialog({
+        title: "Заменить все данные?",
+        html: `Сейчас: <b>${curInc}</b> ${plural(curInc, "доход", "дохода", "доходов")}, <b>${cats(state)}</b> ${plural(cats(state), "категория", "категории", "категорий")}.<br>
+               В файле: <b>${next.incomes.length}</b> ${plural(next.incomes.length, "доход", "дохода", "доходов")}, <b>${cats(next)}</b> ${plural(cats(next), "категория", "категории", "категорий")}.<br><br>
+               Текущие данные будут полностью заменены. Если они могут понадобиться — сначала сделайте «Экспорт JSON».`,
+        okText: "Заменить",
+      }, () => {
+        state = next;
+        selMonth = null; selYear = null; selIncomeChoice = null;
+        if(!save()) return;
+        if(res.fixes.length) toast("Импортировано с исправлениями: " + res.fixes.join("; ") + ".", "warn");
+        else toast("Данные восстановлены из файла.", "ok");
+      });
+    };
+    reader.onerror = () => toast("Не удалось прочитать файл.", "err");
+    reader.readAsText(file);
+    e.target.value = "";
+  });
+}
+
+// Склонение: plural(5, "доход", "дохода", "доходов") → «доходов».
+function plural(n, one, few, many){
+  const a = Math.abs(n) % 100, b = a % 10;
+  if(a > 10 && a < 20) return many;
+  if(b === 1) return one;
+  if(b >= 2 && b <= 4) return few;
+  return many;
 }
 
 /* ---------- навигация по табам ---------- */
@@ -2026,7 +2313,11 @@ style.textContent = ".hidden{display:none !important;}";
 document.head.appendChild(style);
 
 /* ---------- старт ---------- */
+if(persistAfterLoad){
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(snapState())); }catch(e){}
+}
 render();
+loadNotices.forEach(n => toast(n.msg, n.type));
 </script>
 </body>
 </html>

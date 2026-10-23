@@ -1,5 +1,9 @@
 /* Service Worker для offline-работы PWA «Бюджет» */
-const CACHE_NAME = "budget-v2";
+const CACHE_NAME = "budget-v5";
+
+// Chart.js с CDN (та же ссылка, что в index.html). Кладём в кэш при установке,
+// чтобы диаграмма работала офлайн даже при первом запуске без сети.
+const CHART_URL = "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js";
 
 // Основные файлы приложения, которые кэшируются при установке (app shell)
 const SHELL = [
@@ -13,7 +17,10 @@ const SHELL = [
 // При установке — сохраняем app shell в кэш
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL).then(() =>
+      // Ошибка загрузки CDN не должна ломать установку — тогда закэшируем позже, при обычном запросе
+      cache.add(CHART_URL).catch(() => {})
+    )).then(() => self.skipWaiting())
   );
 });
 
@@ -54,7 +61,13 @@ self.addEventListener("fetch", (event) => {
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
       return fetch(event.request).then((response) => {
-        if (response && response.status === 200 && (response.type === "basic" || event.request.url.indexOf("cdn.jsdelivr.net") !== -1)) {
+        // <script src> с CDN приходит как «opaque» (status 0, без CORS) — его
+        // тоже кэшируем, иначе Chart.js никогда не попадёт в кэш и офлайн
+        // диаграммы не будет.
+        const isCdn = event.request.url.indexOf("cdn.jsdelivr.net") !== -1;
+        const okBasic = response && response.status === 200 && response.type === "basic";
+        const okCdn = response && isCdn && (response.status === 200 || response.type === "opaque");
+        if (okBasic || okCdn) {
           const copy = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
         }
